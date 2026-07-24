@@ -1,0 +1,99 @@
+Automation â The Backbone of DevSecOps
+Objectives
+Design and deploy a containerized DevSecOps toolchain (GitLab CE, SonarQube) entirely from scratch on a bare Ubuntu instance
+Author Terraform infrastructure templates that contain deliberate security misconfigurations, then integrate TFsec to detect and remediate them
+Build a GitLab CI/CD pipeline that enforces security gates by failing on HIGH or CRITICAL TFsec findings before any deployment stage is reached
+Prerequisites
+Comfort with the Ubuntu command line: navigating the filesystem, editing files with a terminal editor, and reading command output to diagnose failures
+Conceptual understanding of version control (commits, branches, remotes) and infrastructure-as-code (declaring cloud resources in configuration files rather than clicking through a console)
+Familiarity with YAML indentation rules, since both CI/CD pipeline definitions and Docker Compose files are YAML-based
+Lab Environment
+You will work on a dedicated AWS EC2 Ubuntu instance provided by Al Nafi. The instance has a base Ubuntu installation; you will install all required tools in Task 1.
+
+Task 1: Install and Verify the Complete Toolchain
+Requirement 1
+Design an installation procedure that brings the following tools to a working state on the bare instance: Docker Engine, Docker Compose v2, Git, Terraform (latest stable), TFsec (latest release from the Aqua Security GitHub), jq, and Python 3 with its standard library. Every tool must be reachable on the system PATH without prefixing the full binary path. Use the official vendor installation paths â do not install from unofficial PPAs or random third-party mirrors.
+
+The commands below are a verified starting point. If any URL returns an HTTP error, consult the official documentation link provided immediately after that block.
+
+sudo apt-get update -y
+sudo apt-get install -y ca-certificates curl gnupg lsb-release git jq python3
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+Official Docker GPG and repo guide: https://docs.docker.com/engine/install/ubuntu/
+
+printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu %s stable\n' \
+  "$(dpkg --print-architecture)" \
+  "$(lsb_release -cs)" \
+  | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt-get update -y
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker "$USER"
+newgrp docker
+Troubleshoot this step:
+
+You may see "E: Malformed entry 1 in list file /etc/apt/sources.list.d/docker.list" if the printf wrote a literal backslash instead of a newline.
+Inspect the file with cat /etc/apt/sources.list.d/docker.list â it must be one unbroken line; delete the file with sudo rm /etc/apt/sources.list.d/docker.list and rerun the printf block.
+Official reference: https://docs.docker.com/engine/install/ubuntu/
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://apt.releases.hashicorp.com/gpg \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/hashicorp.gpg
+printf 'deb [arch=%s signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com %s main\n' \
+  "$(dpkg --print-architecture)" \
+  "$(lsb_release -cs)" \
+  | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update -y
+sudo apt-get install -y terraform
+Troubleshoot this step:
+
+You may see "E: Package 'terraform' has no installation candidate" if the Hashicorp repo line was written incorrectly.
+Run cat /etc/apt/sources.list.d/hashicorp.list â the line must contain your Ubuntu codename (e.g., "jammy") with no backslashes; delete and recreate the file if it does not.
+Official reference: https://developer.hashicorp.com/terraform/install
+TFSEC_VERSION=$(curl -fsSL https://api.github.com/repos/aquasecurity/tfsec/releases/latest \
+  | jq -r '.tag_name')
+curl -fsSL "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64" \
+  -o /tmp/tfsec
+sudo install -m 0755 /tmp/tfsec /usr/local/bin/tfsec
+Troubleshoot this step:
+
+You may see "tfsec: command not found" after installation if the binary landed somewhere outside PATH.
+Confirm the binary exists with ls -lh /usr/local/bin/tfsec and that /usr/local/bin is in your PATH with echo $PATH; if it is missing, run export PATH=$PATH:/usr/local/bin and add that line to ~/.bashrc.
+Official reference: https://aquasecurity.github.io/tfsec/latest/guides/installation/
+Acceptance Criteria
+Running docker compose version, terraform version, tfsec --version, git --version, jq --version, and python3 --version each print a version string and exit with code 0, confirmed by running echo $? after each command.
+A non-root user (your login user, not sudo) can execute docker run --rm hello-world and see the "Hello from Docker!" message without a permission-denied error, confirming the group membership change took effect.
+Task 2: Deploy the Toolchain and Author Vulnerable Terraform Templates
+Requirement 1
+Design and deploy a Docker Compose stack that runs GitLab Community Edition (exposed on host port 8080) and SonarQube Community Edition backed by PostgreSQL (SonarQube exposed on host port 9000) as persistent, restart-always services. Both services must be reachable from the instance's browser or via curl before you proceed. After GitLab starts (allow up to ten minutes for first boot), retrieve the auto-generated root password, log in, create a private project named devsecops-pipeline, and generate a SonarQube user token named gitlab-ci-token from the SonarQube admin account. Store the SonarQube token in a local file called sonar.token â you will reference it in Task 3.
+
+Confirmation you should observe: curl -fsSL http://localhost:8080 returns HTML containing "GitLab" and curl -fsSL http://localhost:9000/api/system/status returns JSON with "status":"UP".
+
+Requirement 2
+Inside a local Git repository cloned from your GitLab project, create a terraform/ subdirectory containing a valid Terraform configuration that declares the following AWS resources: one VPC, one public subnet with map_public_ip_on_launch = true, one security group that allows SSH (port 22) inbound from 0.0.0.0/0, one S3 bucket with all four aws_s3_bucket_public_access_block attributes set to false, and one S3 bucket that omits server-side encryption configuration entirely. These misconfigurations are intentional â they exist so TFsec has real findings to report in Task 3. Commit and push this Terraform code to the main branch of your GitLab project.
+
+Confirmation you should observe: terraform validate exits with "Success! The configuration is valid." and tfsec terraform/ run locally prints at least three findings with severity HIGH or CRITICAL before you move to Task 3.
+
+Acceptance Criteria
+Both http://localhost:8080 (GitLab) and http://localhost:9000 (SonarQube) respond to HTTP requests with their respective web interfaces, and the GitLab project devsecops-pipeline exists and contains at least one commit visible under Repository > Commits.
+Running tfsec terraform/ from the repository root locally produces a non-zero exit code and prints findings that reference the SSH-open security group and the public S3 bucket misconfiguration by rule ID, confirming the templates contain detectable vulnerabilities.
+Task 3: Build a Security-Gated CI/CD Pipeline and Demonstrate Remediation
+Requirement 1
+Design a .gitlab-ci.yml pipeline at the repository root that defines exactly four stages in this order: validate, security-scan, quality-check, and deploy. The validate stage must run terraform fmt -check and terraform validate. The security-scan stage must run TFsec, output results as both JSON (saved as a pipeline artifact) and JUnit XML (published as a test report artifact), and exit the stage with a non-zero code â failing the pipeline â if any finding has severity HIGH or CRITICAL. The quality-check stage must invoke the SonarQube scanner pointed at http://localhost:9000 using the token stored in a GitLab CI/CD variable named SONAR_TOKEN; this stage may be set to allow_failure: true. The deploy stage must be when: manual and must not run if the security-scan stage failed. Add the SONAR_TOKEN variable to your project under Settings > CI/CD > Variables using the value from sonar.token. Push .gitlab-ci.yml to main and confirm the pipeline runs automatically.
+
+Confirmation you should observe: The pipeline appears under CI/CD > Pipelines, the security-scan stage turns red (failed) because the Terraform templates still contain HIGH/CRITICAL findings, and the deploy stage is blocked.
+
+Requirement 2
+Remediate every HIGH and CRITICAL TFsec finding in the Terraform templates without deleting any resource block â fix the configurations in place. Specifically: restrict the SSH ingress rule to a non-public CIDR (for example 10.0.0.0/8), set all four aws_s3_bucket_public_access_block attributes to true on the public-access bucket, and add an aws_s3_bucket_server_side_encryption_configuration block with AES256 to the unencrypted bucket. Commit and push the remediated code. The pipeline must now pass the security-scan stage and reach the deploy stage (which remains paused at manual approval).
+
+Confirmation you should observe: tfsec terraform/ run locally exits with code 0 and prints "No problems detected", and the GitLab pipeline shows green checkmarks on validate, security-scan, and quality-check with the deploy stage waiting for manual trigger.
+
+Acceptance Criteria
+The pipeline triggered by the remediated commit shows all three automated stages (validate, security-scan, quality-check) with a passed status in the GitLab UI, and the TFsec JSON artifact downloadable from the security-scan job contains zero results with severity HIGH or CRITICAL (verifiable with jq '[.results[] | select(.severity == "HIGH" or .severity == "CRITICAL")] | length' tfsec-report.json returning 0).
+Re-introducing one of the original misconfigurations (for example setting block_public_acls = false on the S3 bucket), committing, and pushing causes the security-scan stage to fail and the deploy stage to be skipped, demonstrating that the security gate enforces policy on every push and not only on the remediated commit.
+Expected Outcomes
+A fully operational GitLab CI/CD pipeline that automatically blocks deployment when Terraform templates contain HIGH or CRITICAL security findings, demonstrating the "shift-left" principle of catching vulnerabilities before infrastructure is provisioned.
+A documented before-and-after record in Git history showing the vulnerable Terraform commit followed by the remediated commit, with corresponding pipeline results proving the security gate behaved correctly in both cases.
+Conclusion
+This lab required you to assemble a production-pattern DevSecOps pipeline from a bare operating system, making every architectural decision yourself. The core insight is that security gates are only meaningful when they are automated and enforced on every code push â a manual review process would have allowed the vulnerable S3 and SSH configurations to reach deployment. Integrating TFsec as a blocking stage, rather than an advisory one, is what transforms a CI/CD pipeline into a DevSecOps pipeline.
