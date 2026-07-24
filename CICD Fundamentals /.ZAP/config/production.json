@@ -1,0 +1,12 @@
+{
+  "environment": "production",
+  "database": {
+    "host": "production-db",
+    "port": 5432,
+    "name": "app_production"
+  },
+  "security": {
+    "enableHttps": true,
+    "corsOrigins": ["https://yourdomain.com"]
+  }
+}
