@@ -1,0 +1,88 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_IMAGE = 'devsecops-app'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building Docker image...'
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                    sh "docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+        
+        stage('Security Scan') {
+            steps {
+                echo 'Running security scans...'
+                script {
+                    // Basic file security check
+                    sh 'find . -name "*.html" -exec echo "Scanning: {}" \\;'
+                    
+                    // Check for common security issues
+                    sh '''
+                        echo "Checking for hardcoded secrets..."
+                        grep -r "password\\|secret\\|key" . --exclude-dir=.git || echo "No obvious secrets found"
+                    '''
+                }
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+                script {
+                    sh """
+                        docker run -d -p 8083:80 --name test-container-${BUILD_NUMBER} ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        sleep 10
+                        curl -f http://localhost:8083 || exit 1
+                        docker stop test-container-${BUILD_NUMBER}
+                        docker rm test-container-${BUILD_NUMBER}
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy') {
+            steps {
+                echo 'Deploying application...'
+                script {
+                    sh """
+                        # Stop existing container if running
+                        docker stop devsecops-app-prod || true
+                        docker rm devsecops-app-prod || true
+                        
+                        # Deploy new version
+                        docker run -d -p 8084:80 --name devsecops-app-prod ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        echo "Application deployed at http://localhost:8084"
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Cleaning up...'
+            sh "docker image prune -f"
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
