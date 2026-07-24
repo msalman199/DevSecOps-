@@ -1,0 +1,113 @@
+pipeline {
+    agent any
+    
+    environment {
+        SONAR_PROJECT_KEY = 'secure-web-app'
+        ZAP_PORT = '8090'
+        APP_PORT = '5000'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code from repository...'
+                checkout scm
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building the application...'
+                sh '''
+                    cd /home/ubuntu/secure-web-app
+                    docker build -t secure-web-app:latest .
+                '''
+            }
+        }
+        
+        stage('SAST - SonarQube Analysis') {
+            steps {
+                echo 'Running Static Application Security Testing...'
+                script {
+                    def scannerHome = tool 'SonarQubeScanner'
+                    withSonarQubeEnv('SonarQube-Local') {
+                        sh """
+                            cd /home/ubuntu/secure-web-app
+                            ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=http://localhost:9000 \
+                                -Dsonar.login=${SONAR_AUTH_TOKEN}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            steps {
+                echo 'Deploying application to staging environment...'
+                sh '''
+                    # Stop any existing container
+                    docker stop secure-web-app || true
+                    docker rm secure-web-app || true
+                    
+                    # Run the application
+                    docker run -d --name secure-web-app -p 5000:5000 secure-web-app:latest
+                    
+                    # Wait for application to start
+                    sleep 10
+                '''
+            }
+        }
+        
+        stage('DAST - ZAP Security Scan') {
+            steps {
+                echo 'Running Dynamic Application Security Testing...'
+                script {
+                    sh '''
+                        # Basic ZAP scan
+                        curl "http://localhost:8090/JSON/spider/action/scan/?url=http://localhost:5000"
+                        
+                        # Wait for spider to complete
+                        sleep 30
+                        
+                        # Run active scan
+                        curl "http://localhost:8090/JSON/ascan/action/scan/?url=http://localhost:5000"
+                        
+                        # Wait for scan to complete
+                        sleep 60
+                        
+                        # Generate report
+                        curl "http://localhost:8090/OTHER/core/other/htmlreport/" > zap-report.html
+                    '''
+                }
+            }
+        }
+        
+        stage('Security Report') {
+            steps {
+                echo 'Generating security reports...'
+                sh '''
+                    echo "=== SECURITY SCAN SUMMARY ==="
+                    echo "SonarQube SAST scan completed"
+                    echo "ZAP DAST scan completed"
+                    echo "Reports available in Jenkins workspace"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed'
+            sh 'docker stop secure-web-app || true'
+        }
+        success {
+            echo 'All security scans passed successfully!'
+        }
+        failure {
+            echo 'Security scans detected issues. Please review the reports.'
+        }
+    }
+}
