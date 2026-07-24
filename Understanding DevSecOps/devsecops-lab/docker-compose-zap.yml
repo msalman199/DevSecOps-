@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  zap:
+    image: owasp/zap2docker-stable
+    container_name: zap-server
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+      - "8091:8090"
+    command: zap-webswing.sh
+    volumes:
+      - zap_data:/zap/wrk
+
+volumes:
+  zap_data:
