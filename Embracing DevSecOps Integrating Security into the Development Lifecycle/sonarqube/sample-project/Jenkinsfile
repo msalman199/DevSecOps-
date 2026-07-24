@@ -1,0 +1,131 @@
+pipeline {
+    agent any
+    
+    tools {
+        maven 'Maven'
+        jdk 'Java-11'
+    }
+    
+    environment {
+        SONAR_TOKEN = credentials('sonar-token')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building the application...'
+                sh 'mvn clean compile'
+            }
+        }
+        
+        stage('Unit Tests') {
+            steps {
+                echo 'Running unit tests...'
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('Static Code Analysis') {
+            steps {
+                echo 'Running SonarQube analysis...'
+                withSonarQubeEnv('SonarQube') {
+                    sh 'mvn sonar:sonar'
+                }
+            }
+        }
+        
+        stage('Quality Gate') {
+            steps {
+                echo 'Checking SonarQube Quality Gate...'
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+        
+        stage('Dependency Check') {
+            steps {
+                echo 'Running OWASP Dependency Check...'
+                dependencyCheck additionalArguments: '''
+                    -o "./dependency-check-report"
+                    -s "."
+                    -f "ALL"
+                    --prettyPrint
+                ''', odcInstallation: 'OWASP-Dependency-Check'
+                
+                dependencyCheckPublisher pattern: 'dependency-check-report/dependency-check-report.xml'
+            }
+        }
+        
+        stage('Package') {
+            steps {
+                echo 'Packaging the application...'
+                sh 'mvn package -DskipTests'
+            }
+        }
+        
+        stage('Deploy to Test Environment') {
+            steps {
+                echo 'Deploying to test environment...'
+                // Simulate deployment
+                sh 'echo "Application deployed to test environment"'
+            }
+        }
+        
+        stage('Dynamic Security Testing') {
+            steps {
+                echo 'Running OWASP ZAP security scan...'
+                script {
+                    // Run ZAP scan against deployed application
+                    sh '''
+                        mkdir -p zap-reports
+                        docker run -v $(pwd)/zap-reports:/zap/wrk/:rw \
+                            -t owasp/zap2docker-stable \
+                            zap-baseline.py \
+                            -t http://example.com \
+                            -J zap-report.json \
+                            -H zap-report.html \
+                            -r zap-report.md || true
+                    '''
+                }
+            }
+            post {
+                always {
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'zap-reports',
+                        reportFiles: 'zap-report.html',
+                        reportName: 'ZAP Security Report'
+                    ])
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed!'
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        failure {
+            echo 'Pipeline failed!'
+        }
+    }
+}
