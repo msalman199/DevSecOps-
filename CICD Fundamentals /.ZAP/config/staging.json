@@ -1,0 +1,12 @@
+{
+  "environment": "staging",
+  "database": {
+    "host": "staging-db",
+    "port": 5432,
+    "name": "app_staging"
+  },
+  "security": {
+    "enableHttps": false,
+    "corsOrigins": ["http://localhost:3001"]
+  }
+}
