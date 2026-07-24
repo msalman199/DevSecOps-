@@ -1,0 +1,87 @@
+pipeline {
+    agent any
+    
+    environment {
+        SONAR_TOKEN = credentials('sonarqube-token')
+        ZAP_PORT = '8090'
+        TARGET_URL = 'http://your-cloud-machine-ip:8081'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                // In a real scenario, this would checkout from Git
+                sh 'echo "Source code checked out"'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building application...'
+                sh 'echo "Application built successfully"'
+            }
+        }
+        
+        stage('SAST - SonarQube Analysis') {
+            steps {
+                echo 'Running Static Application Security Testing...'
+                script {
+                    def scannerHome = tool 'SonarScanner'
+                    withSonarQubeEnv('SonarQube-Server') {
+                        sh """
+                            cd /home/ubuntu/devsecops-lab/sample-app
+                            ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=devsecops-demo \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=http://your-cloud-machine-ip:9000 \
+                                -Dsonar.login=${SONAR_TOKEN}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Test') {
+            steps {
+                echo 'Deploying to test environment...'
+                sh 'echo "Application deployed to test environment"'
+            }
+        }
+        
+        stage('DAST - ZAP Security Scan') {
+            steps {
+                echo 'Running Dynamic Application Security Testing...'
+                script {
+                    sh """
+                        docker run --rm -v \$(pwd):/zap/wrk/:rw \
+                        -t owasp/zap2docker-weekly zap-baseline.py \
+                        -t ${TARGET_URL} -J zap-report.json || true
+                    """
+                }
+            }
+        }
+        
+        stage('Security Report') {
+            steps {
+                echo 'Generating security reports...'
+                sh 'echo "Security scan completed. Check SonarQube dashboard for SAST results."'
+                sh 'echo "ZAP scan completed. Check workspace for DAST results."'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline completed!'
+            // Archive security reports
+            archiveArtifacts artifacts: '*.json', allowEmptyArchive: true
+        }
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        failure {
+            echo 'Pipeline failed! Check security issues.'
+        }
+    }
+}
