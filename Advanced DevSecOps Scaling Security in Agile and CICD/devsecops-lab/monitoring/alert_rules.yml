@@ -1,0 +1,31 @@
+groups:
+  - name: jenkins_alerts
+    rules:
+      - alert: JenkinsBuildFailure
+        expr: increase(jenkins_builds_failed_build_count[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jenkins build failed"
+          description: "A Jenkins build has failed in the last 5 minutes"
+
+      - alert: JenkinsDown
+        expr: up{job="jenkins"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Jenkins is down"
+          description: "Jenkins has been down for more than 2 minutes"
+
+  - name: system_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes"
