@@ -1,0 +1,36 @@
+# Terraform files
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Sensitive files
+*.pem
+*.key
+secrets.txt
+# Add files to Git
+git add .
+git commit -m "Initial Terraform infrastructure configuration"
+
+# Add remote repository (replace with your GitHub repo URL)
+git remote add origin https://github.com/yourusername/terraform-devsecops-lab.git
+
+# Push to GitHub
+git branch -M main
+git push -u origin main
