@@ -1,0 +1,121 @@
+pipeline {
+    agent any
+    
+    environment {
+        APP_NAME = 'devsecops-sample-app'
+        BUILD_NUMBER = "${env.BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                // In a real scenario, this would checkout from Git
+                sh 'echo "Source code checked out successfully"'
+            }
+        }
+        
+        stage('Security Scan - Dependencies') {
+            steps {
+                echo 'Scanning dependencies for vulnerabilities...'
+                sh '''
+                    echo "Running dependency security scan..."
+                    # In a real scenario, you would run tools like:
+                    # npm audit
+                    # snyk test
+                    echo "No critical vulnerabilities found"
+                '''
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building application...'
+                sh '''
+                    echo "Installing dependencies..."
+                    # npm install would run here
+                    echo "Build completed successfully"
+                '''
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+                sh '''
+                    echo "Running unit tests..."
+                    echo "Running security tests..."
+                    echo "All tests passed"
+                '''
+            }
+        }
+        
+        stage('Security Scan - Code') {
+            steps {
+                echo 'Running static code analysis...'
+                sh '''
+                    echo "Running SAST (Static Application Security Testing)..."
+                    # Tools like SonarQube, Checkmarx would run here
+                    echo "Code security scan completed"
+                '''
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+                sh '''
+                    echo "Building Docker image: ${APP_NAME}:${BUILD_NUMBER}"
+                    # docker build -t ${APP_NAME}:${BUILD_NUMBER} .
+                    echo "Docker image built successfully"
+                '''
+            }
+        }
+        
+        stage('Security Scan - Container') {
+            steps {
+                echo 'Scanning Docker image for vulnerabilities...'
+                sh '''
+                    echo "Running container security scan..."
+                    # Tools like Trivy, Clair would run here
+                    # trivy image ${APP_NAME}:${BUILD_NUMBER}
+                    echo "Container security scan completed"
+                '''
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            steps {
+                echo 'Deploying to staging environment...'
+                sh '''
+                    echo "Deploying ${APP_NAME}:${BUILD_NUMBER} to staging"
+                    echo "Application deployed successfully"
+                '''
+            }
+        }
+        
+        stage('DAST - Dynamic Security Testing') {
+            steps {
+                echo 'Running dynamic security tests...'
+                sh '''
+                    echo "Running DAST against staging environment..."
+                    # Tools like OWASP ZAP would run here
+                    echo "Dynamic security testing completed"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline execution completed'
+            // Clean up resources
+        }
+        success {
+            echo 'Pipeline executed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs for details.'
+        }
+    }
+}
