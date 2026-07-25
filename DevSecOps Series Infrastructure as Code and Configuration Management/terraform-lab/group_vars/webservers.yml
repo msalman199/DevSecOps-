@@ -1,0 +1,16 @@
+---
+# Web server specific variables
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+
+# Application settings
+app_environment: production
+app_debug: false
+app_log_level: info
+
+# Security settings
+ssl_enabled: false
+security_headers: true
+# Create group variables for databases
+nano group_vars/
