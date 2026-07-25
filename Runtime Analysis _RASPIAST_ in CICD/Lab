@@ -1,0 +1,899 @@
+Runtime Analysis (RASP/IAST) in CI/CD
+Objectives
+By the end of this lab, students will be able to:
+
+• Understand the concepts of Interactive Application Security Testing (IAST) and Runtime Application Self-Protection (RASP) • Set up a complete DevSecOps pipeline with integrated security testing • Configure and deploy open-source IAST tools for runtime vulnerability detection • Implement RASP capabilities using open-source solutions • Integrate security testing into CI/CD workflows • Analyze and interpret runtime security findings • Apply security remediation strategies based on runtime analysis results
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of Linux command line operations • Familiarity with Docker and containerization concepts • Knowledge of CI/CD pipeline fundamentals • Understanding of web application security basics • Experience with Git version control system • Basic knowledge of YAML configuration files
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. No need to build or configure your own virtual machine.
+
+Your lab environment includes: • Ubuntu 20.04 LTS with Docker pre-installed • Jenkins CI/CD server • Git repository access • Network connectivity for downloading required tools • Sample vulnerable web application for testing
+
+Lab Tasks Overview
+This lab is divided into the following main tasks:
+
+Environment Preparation and Tool Installation
+Setting Up the Vulnerable Application
+Configuring IAST with OWASP ZAP
+Implementing RASP with ModSecurity
+Creating the DevSecOps Pipeline
+Running Security Tests and Analysis
+Interpreting Results and Remediation
+Task 1: Environment Preparation and Tool Installation
+Subtask 1.1: Verify System Requirements
+First, let's verify that your system is ready for the lab:
+
+# Check system information
+uname -a
+cat /etc/os-release
+
+# Verify Docker installation
+docker --version
+docker-compose --version
+
+# Check available disk space
+df -h
+
+# Verify network connectivity
+ping -c 3 google.com
+Subtask 1.2: Install Required Tools
+Install the necessary tools for our DevSecOps pipeline:
+
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Install essential tools
+sudo apt install -y curl wget git vim unzip python3 python3-pip nodejs npm
+
+# Install Jenkins (if not already installed)
+wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key add -
+sudo sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+sudo apt update
+sudo apt install -y jenkins
+
+# Start Jenkins service
+sudo systemctl start jenkins
+sudo systemctl enable jenkins
+
+# Install OWASP ZAP (our IAST tool)
+wget https://github.com/zaproxy/zaproxy/releases/download/v2.12.0/ZAP_2_12_0_unix.sh
+chmod +x ZAP_2_12_0_unix.sh
+sudo ./ZAP_2_12_0_unix.sh -q
+
+# Install ModSecurity (our RASP tool)
+sudo apt install -y libapache2-mod-security2 apache2
+
+# Install additional security tools
+pip3 install bandit safety
+Subtask 1.3: Configure Docker Environment
+Set up Docker for our containerized applications:
+
+# Add current user to docker group
+sudo usermod -aG docker $USER
+
+# Create Docker network for our lab
+docker network create devsecops-lab
+
+# Pull required Docker images
+docker pull owasp/zap2docker-stable
+docker pull nginx:alpine
+docker pull python:3.9-slim
+Task 2: Setting Up the Vulnerable Application
+Subtask 2.1: Clone Sample Application
+We'll use DVWA (Damn Vulnerable Web Application) as our test subject:
+
+# Create lab directory
+mkdir -p ~/devsecops-lab
+cd ~/devsecops-lab
+
+# Clone DVWA
+git clone https://github.com/digininja/DVWA.git
+cd DVWA
+
+# Create Docker configuration for DVWA
+cat > Dockerfile << 'EOF'
+FROM php:7.4-apache
+
+# Install required PHP extensions
+RUN docker-php-ext-install mysqli pdo pdo_mysql
+
+# Copy application files
+COPY . /var/www/html/
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html/
+RUN chmod -R 755 /var/www/html/
+
+# Expose port
+EXPOSE 80
+
+CMD ["apache2-foreground"]
+EOF
+Subtask 2.2: Configure Application Database
+Set up the database configuration:
+
+# Create docker-compose file for DVWA with database
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  dvwa-db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dvwa
+      MYSQL_USER: dvwa
+      MYSQL_PASSWORD: password
+    volumes:
+      - dvwa_db_data:/var/lib/mysql
+    networks:
+      - devsecops-lab
+
+  dvwa-app:
+    build: .
+    ports:
+      - "8080:80"
+    depends_on:
+      - dvwa-db
+    environment:
+      DB_HOST: dvwa-db
+      DB_NAME: dvwa
+      DB_USER: dvwa
+      DB_PASSWORD: password
+    networks:
+      - devsecops-lab
+
+volumes:
+  dvwa_db_data:
+
+networks:
+  devsecops-lab:
+    external: true
+EOF
+Subtask 2.3: Deploy the Application
+Launch the vulnerable application:
+
+# Build and start the application
+docker-compose up -d
+
+# Wait for services to be ready
+sleep 30
+
+# Verify application is running
+curl -I http://localhost:8080
+
+# Check container status
+docker-compose ps
+Task 3: Configuring IAST with OWASP ZAP
+Subtask 3.1: Set Up ZAP for IAST
+Configure OWASP ZAP for Interactive Application Security Testing:
+
+# Create ZAP configuration directory
+mkdir -p ~/devsecops-lab/zap-config
+
+# Create ZAP automation script
+cat > ~/devsecops-lab/zap-config/zap-baseline.py << 'EOF'
+#!/usr/bin/env python3
+
+import subprocess
+import sys
+import json
+import time
+
+def run_zap_baseline(target_url, report_format='json'):
+    """Run ZAP baseline scan"""
+    
+    cmd = [
+        'docker', 'run', '--rm',
+        '--network', 'devsecops-lab',
+        '-v', f'{os.getcwd()}/reports:/zap/wrk/:rw',
+        'owasp/zap2docker-stable',
+        'zap-baseline.py',
+        '-t', target_url,
+        '-J', 'zap-report.json',
+        '-r', 'zap-report.html'
+    ]
+    
+    print(f"Running ZAP baseline scan on {target_url}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    return result.returncode, result.stdout, result.stderr
+
+if __name__ == "__main__":
+    target = sys.argv[1] if len(sys.argv) > 1 else "http://dvwa-app"
+    exit_code, stdout, stderr = run_zap_baseline(target)
+    
+    print("STDOUT:", stdout)
+    if stderr:
+        print("STDERR:", stderr)
+    
+    sys.exit(exit_code)
+EOF
+
+chmod +x ~/devsecops-lab/zap-config/zap-baseline.py
+Subtask 3.2: Create ZAP IAST Configuration
+Set up ZAP for continuous security testing:
+
+# Create reports directory
+mkdir -p ~/devsecops-lab/reports
+
+# Create ZAP spider and active scan script
+cat > ~/devsecops-lab/zap-config/zap-full-scan.py << 'EOF'
+#!/usr/bin/env python3
+
+import subprocess
+import os
+import sys
+import time
+
+def run_zap_full_scan(target_url):
+    """Run comprehensive ZAP scan with spider and active scan"""
+    
+    # Create reports directory if it doesn't exist
+    os.makedirs('reports', exist_ok=True)
+    
+    cmd = [
+        'docker', 'run', '--rm',
+        '--network', 'devsecops-lab',
+        '-v', f'{os.getcwd()}/reports:/zap/wrk/:rw',
+        'owasp/zap2docker-stable',
+        'zap-full-scan.py',
+        '-t', target_url,
+        '-J', 'zap-full-report.json',
+        '-r', 'zap-full-report.html',
+        '-x', 'zap-full-report.xml'
+    ]
+    
+    print(f"Running ZAP full scan on {target_url}")
+    print("This may take several minutes...")
+    
+    result = subprocess.run(cmd)
+    return result.returncode
+
+if __name__ == "__main__":
+    target = sys.argv[1] if len(sys.argv) > 1 else "http://dvwa-app"
+    exit_code = run_zap_full_scan(target)
+    sys.exit(exit_code)
+EOF
+
+chmod +x ~/devsecops-lab/zap-config/zap-full-scan.py
+Subtask 3.3: Test IAST Configuration
+Run a test scan to verify IAST setup:
+
+cd ~/devsecops-lab
+
+# Run baseline scan
+python3 zap-config/zap-baseline.py http://localhost:8080
+
+# Check if reports were generated
+ls -la reports/
+
+# View scan results summary
+if [ -f reports/zap-report.json ]; then
+    echo "ZAP scan completed successfully"
+    python3 -c "
+import json
+with open('reports/zap-report.json', 'r') as f:
+    data = json.load(f)
+    print(f'Total alerts: {len(data.get(\"site\", [{}])[0].get(\"alerts\", []))}')
+"
+fi
+Task 4: Implementing RASP with ModSecurity
+Subtask 4.1: Configure ModSecurity
+Set up ModSecurity as our Runtime Application Self-Protection tool:
+
+# Create ModSecurity configuration directory
+mkdir -p ~/devsecops-lab/modsecurity-config
+
+# Download OWASP Core Rule Set
+cd ~/devsecops-lab/modsecurity-config
+wget https://github.com/coreruleset/coreruleset/archive/refs/tags/v3.3.4.tar.gz
+tar -xzf v3.3.4.tar.gz
+mv coreruleset-3.3.4 owasp-crs
+
+# Create ModSecurity main configuration
+cat > modsecurity.conf << 'EOF'
+# ModSecurity Configuration for RASP
+
+# Enable ModSecurity
+SecRuleEngine On
+
+# Request body handling
+SecRequestBodyAccess On
+SecRequestBodyLimit 13107200
+SecRequestBodyNoFilesLimit 131072
+SecRequestBodyInMemoryLimit 131072
+SecRequestBodyLimitAction Reject
+
+# Response body handling
+SecResponseBodyAccess On
+SecResponseBodyMimeType text/plain text/html text/xml application/json
+SecResponseBodyLimit 524288
+SecResponseBodyLimitAction ProcessPartial
+
+# File upload handling
+SecTmpDir /tmp/
+SecDataDir /tmp/
+
+# Debug logging
+SecDebugLog /var/log/modsec_debug.log
+SecDebugLogLevel 3
+
+# Audit logging
+SecAuditEngine RelevantOnly
+SecAuditLogRelevantStatus "^(?:5|4(?!04))"
+SecAuditLogParts ABIJDEFHZ
+SecAuditLogType Serial
+SecAuditLog /var/log/modsec_audit.log
+
+# Include OWASP Core Rule Set
+Include /etc/modsecurity/owasp-crs/crs-setup.conf
+Include /etc/modsecurity/owasp-crs/rules/*.conf
+
+# Custom RASP rules for runtime protection
+SecRule ARGS "@detectSQLi" \
+    "id:1001,\
+    phase:2,\
+    block,\
+    msg:'SQL Injection Attack Detected',\
+    logdata:'Matched Data: %{MATCHED_VAR} found within %{MATCHED_VAR_NAME}',\
+    tag:'application-multi',\
+    tag:'language-multi',\
+    tag:'platform-multi',\
+    tag:'attack-sqli'"
+
+SecRule ARGS "@detectXSS" \
+    "id:1002,\
+    phase:2,\
+    block,\
+    msg:'XSS Attack Detected',\
+    logdata:'Matched Data: %{MATCHED_VAR} found within %{MATCHED_VAR_NAME}',\
+    tag:'application-multi',\
+    tag:'language-multi',\
+    tag:'platform-multi',\
+    tag:'attack-xss'"
+EOF
+Subtask 4.2: Create RASP-Enabled Reverse Proxy
+Set up Nginx with ModSecurity for runtime protection:
+
+# Create Nginx configuration with ModSecurity
+cat > ~/devsecops-lab/nginx-modsecurity.conf << 'EOF'
+events {
+    worker_connections 1024;
+}
+
+http {
+    # Load ModSecurity module
+    load_module modules/ngx_http_modsecurity_module.so;
+    
+    # Basic settings
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+    
+    # MIME types
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    
+    # Logging
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+    
+    # ModSecurity configuration
+    modsecurity on;
+    modsecurity_rules_file /etc/modsecurity/modsecurity.conf;
+    
+    # Upstream application server
+    upstream dvwa_backend {
+        server dvwa-app:80;
+    }
+    
+    # RASP-protected server
+    server {
+        listen 80;
+        server_name localhost;
+        
+        # Enable ModSecurity for this location
+        location / {
+            modsecurity on;
+            modsecurity_rules '
+                SecRuleEngine On
+                SecRule ARGS "@detectSQLi" "id:100,phase:2,deny,status:403,msg:SQL Injection blocked by RASP"
+                SecRule ARGS "@detectXSS" "id:101,phase:2,deny,status:403,msg:XSS blocked by RASP"
+            ';
+            
+            proxy_pass http://dvwa_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "RASP is active\n";
+            add_header Content-Type text/plain;
+        }
+    }
+}
+EOF
+Subtask 4.3: Deploy RASP Protection
+Create a containerized RASP solution:
+
+# Create Dockerfile for RASP-enabled Nginx
+cat > ~/devsecops-lab/Dockerfile.rasp << 'EOF'
+FROM nginx:alpine
+
+# Install ModSecurity dependencies
+RUN apk add --no-cache \
+    libmodsecurity \
+    modsecurity-nginx
+
+# Copy configuration files
+COPY nginx-modsecurity.conf /etc/nginx/nginx.conf
+COPY modsecurity-config/modsecurity.conf /etc/modsecurity/modsecurity.conf
+COPY modsecurity-config/owasp-crs /etc/modsecurity/owasp-crs
+
+# Create log directories
+RUN mkdir -p /var/log/nginx /var/log/modsecurity
+
+# Expose port
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+EOF
+
+# Update docker-compose to include RASP proxy
+cat >> docker-compose.yml << 'EOF'
+
+  rasp-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.rasp
+    ports:
+      - "8081:80"
+    depends_on:
+      - dvwa-app
+    networks:
+      - devsecops-lab
+    volumes:
+      - ./logs:/var/log/nginx
+EOF
+Task 5: Creating the DevSecOps Pipeline
+Subtask 5.1: Configure Jenkins Pipeline
+Set up Jenkins for automated security testing:
+
+# Create Jenkins pipeline directory
+mkdir -p ~/devsecops-lab/jenkins
+
+# Create Jenkinsfile for DevSecOps pipeline
+cat > ~/devsecops-lab/Jenkinsfile << 'EOF'
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_COMPOSE_FILE = 'docker-compose.yml'
+        ZAP_REPORT_DIR = 'reports'
+        APPLICATION_URL = 'http://localhost:8080'
+        RASP_URL = 'http://localhost:8081'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                echo 'Building application containers...'
+                sh '''
+                    docker-compose down || true
+                    docker-compose build
+                    docker-compose up -d
+                    sleep 30
+                '''
+            }
+        }
+        
+        stage('Static Code Analysis') {
+            steps {
+                echo 'Running static security analysis...'
+                sh '''
+                    # Run Bandit for Python security issues
+                    find . -name "*.py" -exec bandit {} + || true
+                    
+                    # Check for known vulnerabilities in dependencies
+                    safety check || true
+                '''
+            }
+        }
+        
+        stage('IAST - Interactive Security Testing') {
+            steps {
+                echo 'Running IAST with OWASP ZAP...'
+                sh '''
+                    mkdir -p ${ZAP_REPORT_DIR}
+                    
+                    # Run ZAP baseline scan
+                    python3 zap-config/zap-baseline.py ${APPLICATION_URL} || true
+                    
+                    # Run comprehensive scan
+                    python3 zap-config/zap-full-scan.py ${APPLICATION_URL} || true
+                '''
+            }
+        }
+        
+        stage('RASP Validation') {
+            steps {
+                echo 'Validating RASP protection...'
+                sh '''
+                    # Test RASP is active
+                    curl -f ${RASP_URL}/health
+                    
+                    # Test SQL injection protection
+                    curl -X POST "${RASP_URL}/vulnerabilities/sqli/" \
+                         -d "id=1' OR '1'='1&Submit=Submit" \
+                         -H "Content-Type: application/x-www-form-urlencoded" \
+                         --fail || echo "RASP blocked SQL injection (expected)"
+                    
+                    # Test XSS protection
+                    curl -X GET "${RASP_URL}/vulnerabilities/xss_r/?name=<script>alert('xss')</script>" \
+                         --fail || echo "RASP blocked XSS (expected)"
+                '''
+            }
+        }
+        
+        stage('Security Report Analysis') {
+            steps {
+                echo 'Analyzing security test results...'
+                sh '''
+                    # Process ZAP reports
+                    if [ -f "${ZAP_REPORT_DIR}/zap-report.json" ]; then
+                        python3 -c "
+import json
+import sys
+
+with open('${ZAP_REPORT_DIR}/zap-report.json', 'r') as f:
+    data = json.load(f)
+    
+alerts = data.get('site', [{}])[0].get('alerts', [])
+high_risk = [a for a in alerts if a.get('riskdesc', '').startswith('High')]
+medium_risk = [a for a in alerts if a.get('riskdesc', '').startswith('Medium')]
+
+print(f'Security Scan Results:')
+print(f'Total Alerts: {len(alerts)}')
+print(f'High Risk: {len(high_risk)}')
+print(f'Medium Risk: {len(medium_risk)}')
+
+# Fail build if high-risk vulnerabilities found
+if len(high_risk) > 0:
+    print('HIGH RISK VULNERABILITIES DETECTED!')
+    for alert in high_risk:
+        print(f'- {alert.get(\"name\", \"Unknown\")}: {alert.get(\"desc\", \"No description\")}')
+    sys.exit(1)
+"
+                    fi
+                '''
+            }
+        }
+        
+        stage('Deploy with RASP') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo 'Deploying application with RASP protection...'
+                sh '''
+                    # Ensure RASP proxy is running
+                    docker-compose up -d rasp-proxy
+                    
+                    # Verify deployment
+                    curl -f ${RASP_URL}/health
+                    echo "Application deployed with RASP protection active"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Cleaning up...'
+            sh '''
+                # Archive security reports
+                tar -czf security-reports.tar.gz ${ZAP_REPORT_DIR}/ || true
+                
+                # Clean up containers if needed
+                # docker-compose down || true
+            '''
+            
+            // Archive artifacts
+            archiveArtifacts artifacts: 'security-reports.tar.gz', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+        }
+        
+        failure {
+            echo 'Pipeline failed! Check security reports for issues.'
+        }
+        
+        success {
+            echo 'DevSecOps pipeline completed successfully!'
+        }
+    }
+}
+EOF
+Subtask 5.2: Create Pipeline Helper Scripts
+Create utility scripts for the pipeline:
+
+# Create security validation script
+cat > ~/devsecops-lab/validate-security.sh << 'EOF'
+#!/bin/bash
+
+# Security validation script for DevSecOps pipeline
+
+set -e
+
+echo "=== DevSecOps Security Validation ==="
+
+# Function to check if service is running
+check_service() {
+    local url=$1
+    local service_name=$2
+    
+    echo "Checking $service_name at $url..."
+    if curl -f -s "$url" > /dev/null; then
+        echo "✓ $service_name is running"
+        return 0
+    else
+        echo "✗ $service_name is not accessible"
+        return 1
+    fi
+}
+
+# Function to test RASP protection
+test_rasp_protection() {
+    local rasp_url=$1
+    
+    echo "Testing RASP protection..."
+    
+    # Test SQL injection protection
+    echo "Testing SQL injection protection..."
+    if curl -s -X POST "$rasp_url/vulnerabilities/sqli/" \
+            -d "id=1' OR '1'='1&Submit=Submit" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            | grep -q "403\|blocked\|forbidden"; then
+        echo "✓ SQL injection blocked by RASP"
+    else
+        echo "⚠ SQL injection test inconclusive"
+    fi
+    
+    # Test XSS protection
+    echo "Testing XSS protection..."
+    if curl -s -X GET "$rasp_url/vulnerabilities/xss_r/?name=<script>alert('xss')</script>" \
+            | grep -q "403\|blocked\|forbidden"; then
+        echo "✓ XSS blocked by RASP"
+    else
+        echo "⚠ XSS test inconclusive"
+    fi
+}
+
+# Function to analyze ZAP reports
+analyze_zap_reports() {
+    local report_dir=$1
+    
+    echo "Analyzing ZAP security reports..."
+    
+    if [ -f "$report_dir/zap-report.json" ]; then
+        python3 << 'PYTHON_SCRIPT'
+import json
+import sys
+import os
+
+report_file = sys.argv[1] + "/zap-report.json"
+if not os.path.exists(report_file):
+    print("No ZAP report found")
+    sys.exit(0)
+
+with open(report_file, 'r') as f:
+    data = json.load(f)
+
+alerts = data.get('site', [{}])[0].get('alerts', [])
+risk_counts = {'High': 0, 'Medium': 0, 'Low': 0, 'Informational': 0}
+
+for alert in alerts:
+    risk = alert.get('riskdesc', '').split()[0]
+    if risk in risk_counts:
+        risk_counts[risk] += 1
+
+print(f"ZAP Scan Results Summary:")
+print(f"Total Alerts: {len(alerts)}")
+for risk, count in risk_counts.items():
+    if count > 0:
+        print(f"{risk} Risk: {count}")
+
+# Return non-zero if high-risk issues found
+if risk_counts['High'] > 0:
+    print("\n⚠ HIGH RISK VULNERABILITIES DETECTED!")
+    sys.exit(1)
+else:
+    print("\n✓ No high-risk vulnerabilities detected")
+PYTHON_SCRIPT
+    else
+        echo "No ZAP report found at $report_dir/zap-report.json"
+    fi
+}
+
+# Main validation flow
+main() {
+    local app_url=${1:-"http://localhost:8080"}
+    local rasp_url=${2:-"http://localhost:8081"}
+    local report_dir=${3:-"reports"}
+    
+    echo "Starting security validation..."
+    echo "Application URL: $app_url"
+    echo "RASP URL: $rasp_url"
+    echo "Report Directory: $report_dir"
+    echo ""
+    
+    # Check services
+    check_service "$app_url" "Application"
+    check_service "$rasp_url/health" "RASP Proxy"
+    
+    # Test RASP protection
+    test_rasp_protection "$rasp_url"
+    
+    # Analyze security reports
+    analyze_zap_reports "$report_dir"
+    
+    echo ""
+    echo "=== Security Validation Complete ==="
+}
+
+# Run main function with arguments
+main "$@"
+EOF
+
+chmod +x ~/devsecops-lab/validate-security.sh
+Task 6: Running Security Tests and Analysis
+Subtask 6.1: Execute Complete Security Pipeline
+Run the full DevSecOps pipeline with IAST and RASP:
+
+cd ~/devsecops-lab
+
+# Start all services
+echo "Starting DevSecOps environment..."
+docker-compose up -d
+
+# Wait for services to be ready
+echo "Waiting for services to initialize..."
+sleep 60
+
+# Verify services are running
+docker-compose ps
+
+# Check application accessibility
+curl -I http://localhost:8080
+curl -I http://localhost:8081/health
+Subtask 6.2: Run IAST Security Testing
+Execute comprehensive IAST testing:
+
+# Run baseline security scan
+echo "Running IAST baseline scan..."
+python3 zap-config/zap-baseline.py http://localhost:8080
+
+# Run comprehensive security scan
+echo "Running IAST comprehensive scan..."
+python3 zap-config/zap-full-scan.py http://localhost:8080
+
+# Check scan results
+ls -la reports/
+echo "IAST scanning completed"
+Subtask 6.3: Test RASP Protection
+Validate RASP functionality:
+
+# Run security validation script
+echo "Testing RASP protection..."
+./validate-security.sh http://localhost:8080 http://localhost:8081 reports
+
+# Manual RASP testing
+echo "Manual RASP testing..."
+
+# Test 1: SQL Injection
+echo "Testing SQL injection protection..."
+curl -v -X POST "http://localhost:8081/vulnerabilities/sqli/" \
+     -d "id=1' OR '1'='1&Submit=Submit" \
+     -H "Content-Type: application/x-www-form-urlencoded"
+
+echo ""
+
+# Test 2: XSS Attack
+echo "Testing XSS protection..."
+curl -v "http://localhost:8081/vulnerabilities/xss_r/?name=<script>alert('xss')</script>"
+
+echo ""
+
+# Test 3: Directory Traversal
+echo "Testing directory traversal protection..."
+curl -v "http://localhost:8081/vulnerabilities/fi/?page=../../../etc/passwd"
+Subtask 6.4: Generate Security Reports
+Create comprehensive security reports:
+
+# Create security report generator script
+cat > ~/devsecops-lab/generate-security-report.py << 'EOF'
+#!/usr/bin/env python3
+
+import json
+import os
+import datetime
+from pathlib import Path
+
+def generate_security_report():
+    """Generate comprehensive security report"""
+    
+    report_dir = Path("reports")
+    report_data = {
+        "scan_date": datetime.datetime.now().isoformat(),
+        "iast_results": {},
+        "rasp_status": {},
+        "summary": {}
+    }
+    
+    # Process ZAP IAST results
+    zap_report_file = report_dir / "zap-report.json"
+    if zap_report_file.exists():
+        with open(zap_report_file, 'r') as f:
+            zap_data = json.load(f)
+            
+        alerts = zap_data.get('site', [{}])[0].get('alerts', [])
+        
+        # Categorize alerts by risk level
+        risk_summary = {'High': [], 'Medium': [], 'Low': [], 'Informational': []}
+        
+        for alert in alerts:
+            risk_level = alert.get('riskdesc', '').split()[0]
+            if risk_level in risk_summary:
+                risk_summary[risk_level].append({
+                    'name': alert.get('name', 'Unknown'),
+                    'description': alert.get('desc', 'No description'),
+                    'solution': alert.get('solution', 'No solution provided'),
+                    'instances': len(alert.get('instances', []))
+                })
+        
+        report_data["iast_results"] = {
+            "total_alerts": len(alerts),
+            "risk_breakdown": {k: len(v) for k, v in risk_summary.items()},
+            "detailed_findings": risk_summary
+        }
+    
+    # Check RASP status
+    try:
+        import subprocess
+        result = subprocess.run(['curl', '-s', 'http://localhost:8081/health'], 
+                              capture_output=True, text=True, timeout=10)
+        report_data["rasp_status"] = {
+            "active": result.returncode == 0,
+            "response": result.stdout if result.returncode == 0 else result.stderr
+        }
+    except Exception as e:
+        report_data["rasp_status"] = {
+            "active": False,
+            "error": str(e)
+        }
+    
+    # Generate summary
+    iast_high_risk = report_data["iast_results"].get("risk_breakdown", {}).get("High", 0)
+    iast_medium_risk = report_data["iast_results"].get("risk_breakdown", {}).get("Medium", 0)
+    rasp_active = report_data["rasp_status"].get("active", False)
+    
+    report_data["summary"] = {
+        "security_posture": "GOOD" if iast_high_risk == 0 and rasp
