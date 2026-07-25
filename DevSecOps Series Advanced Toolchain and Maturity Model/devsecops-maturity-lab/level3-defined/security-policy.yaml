@@ -1,0 +1,33 @@
+security_policies:
+  sast:
+    fail_threshold: "HIGH"
+    max_high_vulnerabilities: 0
+    max_medium_vulnerabilities: 5
+    max_low_vulnerabilities: 20
+  
+  dependency:
+    fail_on_vulnerability: true
+    allowed_licenses:
+      - "MIT"
+      - "Apache-2.0"
+      - "BSD-3-Clause"
+      - "ISC"
+  
+  container:
+    fail_threshold: "HIGH"
+    max_critical_vulnerabilities: 0
+    max_high_vulnerabilities: 2
+    base_image_policy: "approved_only"
+  
+  dast:
+    fail_threshold: "MEDIUM"
+    required_tests:
+      - "sql_injection"
+      - "xss"
+      - "authentication"
+  
+  compliance:
+    required_standards:
+      - "OWASP_TOP_10"
+      - "CWE_TOP_25"
+    documentation_required: true
