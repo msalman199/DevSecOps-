@@ -58,3 +58,8 @@ variable "key_pair_name" {
   type        = string
   default     = "my-key-pair"
 }
+variable "allowed_ssh_cidr" {
+  description = "CIDR block allowed for SSH access"
+  type        = string
+  default     = "10.0.0.0/16"
+}
