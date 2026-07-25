@@ -1,0 +1,19 @@
+assessment:
+  organization: "Lab Environment"
+  assessor: "Student"
+  date: "$(date +%Y-%m-%d)"
+  scope: "Full DevSecOps Pipeline"
+
+maturity_levels:
+  level1:
+    name: "Basic"
+    description: "Initial security awareness"
+  level2:
+    name: "Managed"
+    description: "Defined security processes"
+  level3:
+    name: "Defined"
+    description: "Standardized practices"
+  level4:
+    name: "Optimized"
+    description: "Continuous improvement"
