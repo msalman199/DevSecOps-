@@ -1,0 +1,912 @@
+Advanced DevSecOps - Scaling Security in Agile and CI/CD
+Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamentals of DevSecOps and its integration with Agile methodologies • Write secure user stories following security best practices • Install and configure Wiki.js for documentation management • Create and configure Jenkins CI/CD pipelines • Integrate Jenkins with Prometheus for monitoring • Visualize pipeline metrics and logs using Grafana • Implement a complete DevSecOps monitoring stack using open-source tools
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of Linux command line operations • Familiarity with Git version control concepts • Basic knowledge of web applications and APIs • Understanding of containerization concepts (Docker basics) • Basic knowledge of YAML syntax • Familiarity with CI/CD concepts
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. No need to build or configure your own virtual machine.
+
+Your lab environment includes: • Ubuntu 20.04 LTS with Docker pre-installed • 4GB RAM and 20GB storage • All necessary ports pre-configured • Internet access for downloading required packages
+
+Lab Tasks Overview
+This lab is divided into two main tasks: • Lab-1: Writing Secure User Stories for Login Feature • Lab-2: Setting up Wiki.js, Jenkins Pipeline, Prometheus, and Grafana integration
+
+Lab-1: Writing Secure User Stories for Login Feature
+Task 1.1: Understanding Secure User Stories
+A secure user story incorporates security requirements directly into the development process, ensuring security is considered from the beginning rather than as an afterthought.
+
+Task 1.2: Create Secure User Stories for Login Feature
+Subtask 1.2.1: Basic Login User Story
+Create a file to document your user stories:
+
+mkdir -p ~/devsecops-lab/user-stories
+cd ~/devsecops-lab/user-stories
+nano login-user-stories.md
+Add the following content to the file:
+
+# Secure User Stories for Login Feature
+
+## Story 1: Basic User Authentication
+**As a** registered user  
+**I want to** log into the application securely  
+**So that** I can access my personal dashboard and data  
+
+### Acceptance Criteria:
+- User must provide valid username/email and password
+- System must validate credentials against secure database
+- Failed login attempts must be logged for security monitoring
+- User session must be established securely upon successful authentication
+
+### Security Requirements:
+- Passwords must be hashed using bcrypt or similar strong hashing algorithm
+- Implement rate limiting to prevent brute force attacks (max 5 attempts per 15 minutes)
+- Use HTTPS for all authentication requests
+- Implement CSRF protection
+- Session tokens must be cryptographically secure and expire after 30 minutes of inactivity
+
+### Definition of Done:
+- [ ] Login form validates input on both client and server side
+- [ ] Password is never stored or transmitted in plain text
+- [ ] Security headers are implemented (X-Frame-Options, X-XSS-Protection, etc.)
+- [ ] Failed login attempts are logged with IP address and timestamp
+- [ ] Rate limiting is functional and tested
+- [ ] Session management is secure and tested
+
+## Story 2: Account Lockout Protection
+**As a** system administrator  
+**I want to** automatically lock user accounts after multiple failed login attempts  
+**So that** I can protect against brute force attacks  
+
+### Acceptance Criteria:
+- Account locks after 5 consecutive failed login attempts
+- Locked accounts require administrator intervention or time-based unlock (30 minutes)
+- User receives clear notification about account lockout
+- Legitimate users can request account unlock via secure process
+
+### Security Requirements:
+- Lockout mechanism must be resistant to bypass attempts
+- Lockout status must be stored securely and persistently
+- Account unlock process must include additional verification
+- All lockout events must be logged and monitored
+
+### Definition of Done:
+- [ ] Account lockout mechanism is implemented and tested
+- [ ] Lockout notifications are user-friendly but don't reveal sensitive information
+- [ ] Administrator can view and manage locked accounts
+- [ ] Automated unlock process works correctly
+- [ ] All security events are properly logged
+
+## Story 3: Multi-Factor Authentication (MFA)
+**As a** security-conscious user  
+**I want to** enable two-factor authentication on my account  
+**So that** my account remains secure even if my password is compromised  
+
+### Acceptance Criteria:
+- Users can enable/disable MFA in their account settings
+- Support for TOTP (Time-based One-Time Password) authentication
+- Backup codes are provided for account recovery
+- MFA is required for sensitive operations
+
+### Security Requirements:
+- TOTP secrets must be generated securely and stored encrypted
+- Backup codes must be cryptographically random and single-use
+- MFA setup process must be secure and user-friendly
+- Failed MFA attempts must be logged and monitored
+
+### Definition of Done:
+- [ ] MFA enrollment process is implemented and tested
+- [ ] TOTP authentication works with popular authenticator apps
+- [ ] Backup codes are generated, stored securely, and work correctly
+- [ ] MFA can be disabled only with proper verification
+- [ ] All MFA events are logged for security monitoring
+
+## Story 4: Secure Password Reset
+**As a** user who forgot their password  
+**I want to** reset my password securely  
+**So that** I can regain access to my account without compromising security  
+
+### Acceptance Criteria:
+- Password reset can be initiated with email address
+- Reset link is sent to registered email address
+- Reset link expires after 1 hour
+- New password must meet complexity requirements
+
+### Security Requirements:
+- Reset tokens must be cryptographically secure and single-use
+- Reset process must not reveal whether email address is registered
+- Old password must be invalidated immediately upon reset
+- All password reset activities must be logged
+
+### Definition of Done:
+- [ ] Password reset email is sent securely
+- [ ] Reset tokens are secure and expire properly
+- [ ] New password validation is implemented
+- [ ] User is notified of successful password change
+- [ ] All reset activities are logged and monitored
+Save the file by pressing Ctrl+X, then Y, then Enter.
+
+Subtask 1.2.2: Create Security Requirements Checklist
+Create a security checklist for the development team:
+
+nano security-checklist.md
+Add the following content:
+
+# DevSecOps Security Checklist for Login Feature
+
+## Pre-Development Security Requirements
+
+### Input Validation
+- [ ] All user inputs are validated on both client and server side
+- [ ] Input length limits are enforced
+- [ ] Special characters are properly handled
+- [ ] SQL injection prevention measures are implemented
+
+### Authentication Security
+- [ ] Passwords are hashed using bcrypt with appropriate salt rounds (minimum 12)
+- [ ] Session tokens are cryptographically secure (minimum 128-bit entropy)
+- [ ] Session timeout is implemented (30 minutes inactivity)
+- [ ] Secure session storage is implemented
+
+### Communication Security
+- [ ] All authentication requests use HTTPS
+- [ ] TLS 1.2 or higher is enforced
+- [ ] Security headers are implemented
+- [ ] CSRF protection is enabled
+
+### Monitoring and Logging
+- [ ] Failed login attempts are logged with IP, timestamp, and username
+- [ ] Successful logins are logged for audit purposes
+- [ ] Security events trigger appropriate alerts
+- [ ] Log data is stored securely and retained appropriately
+
+## Development Phase Security Checks
+
+### Code Security
+- [ ] No hardcoded credentials in source code
+- [ ] Sensitive data is not logged
+- [ ] Error messages don't reveal sensitive information
+- [ ] Dependencies are scanned for known vulnerabilities
+
+### Testing Requirements
+- [ ] Unit tests include security test cases
+- [ ] Integration tests verify security controls
+- [ ] Penetration testing is performed
+- [ ] Security code review is completed
+
+## Deployment Security
+
+### Infrastructure Security
+- [ ] Database connections are encrypted
+- [ ] Application runs with minimal privileges
+- [ ] Security patches are applied
+- [ ] Monitoring and alerting are configured
+
+### Operational Security
+- [ ] Incident response procedures are documented
+- [ ] Security monitoring is active
+- [ ] Backup and recovery procedures are tested
+- [ ] Access controls are properly configured
+Save the file and continue to Lab-2.
+
+Lab-2: Setting up DevSecOps Monitoring Stack
+Task 2.1: Install and Configure Wiki.js
+Subtask 2.1.1: Install Docker and Docker Compose
+First, ensure Docker is running and install Docker Compose:
+
+# Check if Docker is running
+sudo systemctl status docker
+
+# If not running, start Docker
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# Install Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Verify installation
+docker-compose --version
+Subtask 2.1.2: Create Wiki.js Configuration
+Create a directory for the Wiki.js setup:
+
+mkdir -p ~/devsecops-lab/wikijs
+cd ~/devsecops-lab/wikijs
+Create a Docker Compose file for Wiki.js:
+
+nano docker-compose.yml
+Add the following configuration:
+
+version: '3.8'
+
+services:
+  wikijs-db:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: wiki
+      POSTGRES_PASSWORD: wikijsrocks
+      POSTGRES_USER: wikijs
+    logging:
+      driver: "none"
+    restart: unless-stopped
+    volumes:
+      - wikijs-db-data:/var/lib/postgresql/data
+    networks:
+      - wikijs-network
+
+  wikijs:
+    image: ghcr.io/requarks/wiki:2
+    depends_on:
+      - wikijs-db
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: wikijs-db
+      DB_PORT: 5432
+      DB_USER: wikijs
+      DB_PASS: wikijsrocks
+      DB_NAME: wiki
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - wikijs-network
+    volumes:
+      - wikijs-data:/wiki/data
+
+volumes:
+  wikijs-db-data:
+  wikijs-data:
+
+networks:
+  wikijs-network:
+    driver: bridge
+Subtask 2.1.3: Deploy Wiki.js
+Start the Wiki.js application:
+
+# Start Wiki.js services
+docker-compose up -d
+
+# Check if services are running
+docker-compose ps
+
+# View logs to ensure everything is working
+docker-compose logs wikijs
+Subtask 2.1.4: Configure Wiki.js
+Access Wiki.js through your browser at http://localhost:3000 or your lab machine's IP address on port 3000.
+
+Complete the initial setup:
+
+Create an administrator account
+Configure the site settings
+Choose authentication method (Local for this lab)
+Subtask 2.1.5: Create Documentation in Wiki.js
+Create sample documentation pages:
+
+DevSecOps Best Practices Page:
+
+Navigate to Wiki.js web interface
+Click "Create Page"
+Title: "DevSecOps Best Practices"
+Add content about security integration in CI/CD
+Security Policies Page:
+
+Create another page titled "Security Policies"
+Document password policies, access controls, etc.
+Incident Response Procedures:
+
+Create a page for incident response
+Document step-by-step procedures
+Task 2.2: Install and Configure Jenkins
+Subtask 2.2.1: Create Jenkins Configuration
+Create a directory for Jenkins:
+
+mkdir -p ~/devsecops-lab/jenkins
+cd ~/devsecops-lab/jenkins
+Create a Docker Compose file for Jenkins:
+
+nano docker-compose.yml
+Add the following configuration:
+
+version: '3.8'
+
+services:
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+    networks:
+      - jenkins-network
+
+volumes:
+  jenkins_home:
+
+networks:
+  jenkins-network:
+    driver: bridge
+Subtask 2.2.2: Deploy Jenkins
+Start Jenkins:
+
+# Start Jenkins
+docker-compose up -d
+
+# Check if Jenkins is running
+docker-compose ps
+
+# Get the initial admin password
+docker-compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+Subtask 2.2.3: Configure Jenkins
+Access Jenkins at http://localhost:8080
+Use the initial admin password from the previous step
+Install suggested plugins
+Create an admin user
+Configure Jenkins URL
+Subtask 2.2.4: Install Required Jenkins Plugins
+Install the following plugins through Jenkins UI (Manage Jenkins > Manage Plugins):
+
+Prometheus metrics plugin
+Pipeline plugin
+Git plugin
+Docker plugin
+Blue Ocean (optional, for better UI)
+Task 2.3: Create a Jenkins Pipeline
+Subtask 2.3.1: Create a Sample Application Repository
+Create a simple application for the pipeline:
+
+mkdir -p ~/devsecops-lab/sample-app
+cd ~/devsecops-lab/sample-app
+
+# Initialize git repository
+git init
+
+# Create a simple Node.js application
+nano package.json
+Add the following content:
+
+{
+  "name": "devsecops-sample-app",
+  "version": "1.0.0",
+  "description": "Sample application for DevSecOps lab",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo \"Running tests...\" && exit 0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
+Create the main application file:
+
+nano app.js
+Add the following content:
+
+const express = require('express');
+const app = express();
+const port = 3001;
+
+app.get('/', (req, res) => {
+  res.json({
+    message: 'DevSecOps Sample Application',
+    version: '1.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    uptime: process.uptime()
+  });
+});
+
+app.listen(port, () => {
+  console.log(`Sample app listening at http://localhost:${port}`);
+});
+Create a Dockerfile:
+
+nano Dockerfile
+Add the following content:
+
+FROM node:16-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 3001
+
+CMD ["npm", "start"]
+Subtask 2.3.2: Create Jenkinsfile
+Create a Jenkins pipeline file:
+
+nano Jenkinsfile
+Add the following pipeline configuration:
+
+pipeline {
+    agent any
+    
+    environment {
+        APP_NAME = 'devsecops-sample-app'
+        BUILD_NUMBER = "${env.BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                // In a real scenario, this would checkout from Git
+                sh 'echo "Source code checked out successfully"'
+            }
+        }
+        
+        stage('Security Scan - Dependencies') {
+            steps {
+                echo 'Scanning dependencies for vulnerabilities...'
+                sh '''
+                    echo "Running dependency security scan..."
+                    # In a real scenario, you would run tools like:
+                    # npm audit
+                    # snyk test
+                    echo "No critical vulnerabilities found"
+                '''
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building application...'
+                sh '''
+                    echo "Installing dependencies..."
+                    # npm install would run here
+                    echo "Build completed successfully"
+                '''
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+                sh '''
+                    echo "Running unit tests..."
+                    echo "Running security tests..."
+                    echo "All tests passed"
+                '''
+            }
+        }
+        
+        stage('Security Scan - Code') {
+            steps {
+                echo 'Running static code analysis...'
+                sh '''
+                    echo "Running SAST (Static Application Security Testing)..."
+                    # Tools like SonarQube, Checkmarx would run here
+                    echo "Code security scan completed"
+                '''
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+                sh '''
+                    echo "Building Docker image: ${APP_NAME}:${BUILD_NUMBER}"
+                    # docker build -t ${APP_NAME}:${BUILD_NUMBER} .
+                    echo "Docker image built successfully"
+                '''
+            }
+        }
+        
+        stage('Security Scan - Container') {
+            steps {
+                echo 'Scanning Docker image for vulnerabilities...'
+                sh '''
+                    echo "Running container security scan..."
+                    # Tools like Trivy, Clair would run here
+                    # trivy image ${APP_NAME}:${BUILD_NUMBER}
+                    echo "Container security scan completed"
+                '''
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            steps {
+                echo 'Deploying to staging environment...'
+                sh '''
+                    echo "Deploying ${APP_NAME}:${BUILD_NUMBER} to staging"
+                    echo "Application deployed successfully"
+                '''
+            }
+        }
+        
+        stage('DAST - Dynamic Security Testing') {
+            steps {
+                echo 'Running dynamic security tests...'
+                sh '''
+                    echo "Running DAST against staging environment..."
+                    # Tools like OWASP ZAP would run here
+                    echo "Dynamic security testing completed"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline execution completed'
+            // Clean up resources
+        }
+        success {
+            echo 'Pipeline executed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs for details.'
+        }
+    }
+}
+Commit the files:
+
+git add .
+git commit -m "Initial commit with sample application and Jenkinsfile"
+Subtask 2.3.3: Create Jenkins Pipeline Job
+In Jenkins UI, click "New Item"
+
+Enter name: "DevSecOps-Sample-Pipeline"
+
+Select "Pipeline" and click OK
+
+In the pipeline configuration:
+
+Under "Pipeline" section, select "Pipeline script"
+Copy and paste the Jenkinsfile content
+Save the configuration
+Run the pipeline by clicking "Build Now"
+
+Task 2.4: Install and Configure Prometheus
+Subtask 2.4.1: Create Prometheus Configuration
+Create a directory for Prometheus:
+
+mkdir -p ~/devsecops-lab/monitoring
+cd ~/devsecops-lab/monitoring
+Create Prometheus configuration file:
+
+nano prometheus.yml
+Add the following configuration:
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'jenkins'
+    metrics_path: '/prometheus'
+    static_configs:
+      - targets: ['jenkins:8080']
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+Subtask 2.4.2: Create Docker Compose for Monitoring Stack
+Create a comprehensive monitoring stack:
+
+nano docker-compose.yml
+Add the following configuration:
+
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - monitoring
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge
+Subtask 2.4.3: Deploy Monitoring Stack
+Start the monitoring services:
+
+# Start monitoring stack
+docker-compose up -d
+
+# Check if all services are running
+docker-compose ps
+
+# View logs
+docker-compose logs prometheus
+docker-compose logs grafana
+Task 2.5: Configure Jenkins-Prometheus Integration
+Subtask 2.5.1: Configure Jenkins Prometheus Plugin
+In Jenkins, go to "Manage Jenkins" > "Configure System"
+Find the "Prometheus" section
+Check "Collect metrics for builds"
+Set the path to /prometheus (default)
+Save the configuration
+Subtask 2.5.2: Update Prometheus Configuration
+Since Jenkins is running in a separate Docker network, we need to update the Prometheus configuration:
+
+# Stop the monitoring stack
+docker-compose down
+
+# Update prometheus.yml
+nano prometheus.yml
+Update the Jenkins target in the configuration:
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'jenkins'
+    metrics_path: '/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+    scrape_interval: 30s
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+Restart the monitoring stack:
+
+docker-compose up -d
+Task 2.6: Configure Grafana Dashboards
+Subtask 2.6.1: Access Grafana
+Open your browser and navigate to http://localhost:3001
+Login with username: admin and password: admin123
+You'll be prompted to change the password (optional for this lab)
+Subtask 2.6.2: Add Prometheus Data Source
+Click on the gear icon (Configuration) in the left sidebar
+Select "Data Sources"
+Click "Add data source"
+Select "Prometheus"
+Set the URL to: http://prometheus:9090
+Click "Save & Test"
+Subtask 2.6.3: Create Jenkins Dashboard
+Click the "+" icon in the left sidebar
+Select "Dashboard"
+Click "Add new panel"
+In the query field, enter: jenkins_builds_duration_milliseconds_summary
+Set the panel title to "Jenkins Build Duration"
+Click "Apply"
+Add more panels for:
+
+Build success rate: rate(jenkins_builds_success_build_count[5m])
+Active builds: jenkins_builds_running_build_count
+Queue length: jenkins_queue_size_value
+Subtask 2.6.4: Create System Monitoring Dashboard
+Create another dashboard for system metrics:
+
+Create a new dashboard
+Add panels for:
+CPU Usage: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+Memory Usage: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+Disk Usage: 100 - ((node_filesystem_avail_bytes * 100) / node_filesystem_size_bytes)
+Task 2.7: Test the Complete Pipeline
+Subtask 2.7.1: Run Jenkins Pipeline
+Go to Jenkins dashboard
+Click on your "DevSecOps-Sample-Pipeline" job
+Click "Build Now"
+Monitor the build progress
+Subtask 2.7.2: Verify Metrics Collection
+Access Prometheus at http://localhost:9090
+Go to "Status" > "Targets" to verify Jenkins is being scraped
+Query for Jenkins metrics: jenkins_builds_duration_milliseconds_summary
+Subtask 2.7.3: View Metrics in Grafana
+Access Grafana at http://localhost:3001
+Open your Jenkins dashboard
+Verify that build metrics are being displayed
+Run a few more builds to see the metrics update
+Task 2.8: Create Alerting Rules (Optional Advanced Task)
+Subtask 2.8.1: Create Alerting Rules
+Create an alerting rules file:
+
+cd ~/devsecops-lab/monitoring
+nano alert_rules.yml
+Add the following alerting rules:
+
+groups:
+  - name: jenkins_alerts
+    rules:
+      - alert: JenkinsBuildFailure
+        expr: increase(jenkins_builds_failed_build_count[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Jenkins build failed"
+          description: "A Jenkins build has failed in the last 5 minutes"
+
+      - alert: JenkinsDown
+        expr: up{job="jenkins"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Jenkins is down"
+          description: "Jenkins has been down for more than 2 minutes"
+
+  - name: system_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes"
+Update the Prometheus configuration to include the rules:
+
+nano prometheus.yml
+Add the rule files section:
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'jenkins'
+    metrics_path: '/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+    scrape_interval: 30s
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+Update the Docker Compose file to include the rules file:
+
+nano docker-compose.yml
+Update the Prometheus service volumes:
+
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+Restart Prometheus:
+
+docker-compose restart prometheus
+Troubleshooting Common Issues
+Issue 1: Jenkins Not Accessible
+Problem: Cannot access Jenkins on port 8080 Solution:
+
+# Check if Jenkins container is running
+docker ps | grep jenkins
+
+# Check Jenkins logs
+docker logs jenkins
+
+# Restart Jenkins if needed
+cd ~/devsecops-lab/jenkins
+docker-compose restart jenkins
+Issue 2: Prometheus Cannot Scrape Jenkins
+Problem: Jenkins target shows as "DOWN" in Prometheus Solution:
+
+# Verify Jenkins Prometheus plugin is installed
+# Check if Jenkins is accessible from Prometheus container
+docker exec -it prometheus wget -qO- http://host.docker.internal:8080/prometheus
+Issue 3: Grafana Cannot Connect to Prometheus
+Problem: Grafana shows "Bad Gateway" when testing Prometheus data source Solution:
+
+# Verify both containers are in the same network
+docker network ls
+docker network inspect monitoring_monitoring
+
+# Use the correct Prometheus URL: http://prometheus:9090
+Issue 4: Wiki.js Database Connection Issues
+Problem: Wiki.js cannot connect to PostgreSQL Solution:
+
+# Check if both containers are running
+cd ~/devsecops-lab/wikijs
+docker-compose ps
+
+# Check database logs
+docker-compose logs wikijs-db
+
+# Restart the entire stack
+docker-compose down && docker-compose up -d
+Verification Checklist
+Before completing the lab, verify the following:
+
+ Wiki.js is accessible and contains documentation
+ Jenkins is running and the pipeline executes successfully
+ Prometheus is collecting metrics from Jenkins and system
+ Grafana displays dashboards with Jenkins and system metrics
+ All services are properly networked and communicating
+ Secure user stories are documented with proper security requirements
+Conclusion
+Congratulations! You have successfully completed the Advanced DevSecOps lab. In this comprehensive exercise, you have:
+
+Accomplished Key Learning Objectives: • Created secure user stories that integrate security requirements from the beginning of the development process • Set up a complete documentation system using Wiki.js for storing DevSecOps policies and procedures • Implemented a Jenkins CI/CD pipeline with security scanning stages integrated throughout the build process • Configured Prometheus to collect metrics from Jenkins and system components • Created Grafana dashboards to visualize pipeline performance and system health • Established a complete DevSecOps monitoring and observability stack using open-source tools
+
+Why This Matters: This lab demonstrates the practical implementation of DevSecOps principles where security is integrated throughout the entire software development lifecycle rather than being an afterthought. The monitoring and observability stack you've built provides real-time visibility into both security and operational metrics, enabling teams to quickly identify and respond to issues.
+
+The secure user stories you created establish a foundation for security-first development, ensuring that security requirements are considered and implemented from the initial planning stages. The integrated monitoring solution provides the visibility needed to maintain security and performance standards in production environments.
+
+Real-World Applications: The skills and tools you've learned in this lab are directly applicable to enterprise DevSecOps implementations. Organizations use similar stacks to maintain security compliance, monitor application performance, and ensure rapid, secure software delivery. The combination of documentation (Wiki.js), automation (Jenkins), and monitoring (Prometheus/Grafana) represents a modern approach to scalable, secure software development operations.
+
+This foundation prepares you for more advanced DevSecOps topics including automated security testing, compliance as code, and advanced threat detection and response mechanisms.
