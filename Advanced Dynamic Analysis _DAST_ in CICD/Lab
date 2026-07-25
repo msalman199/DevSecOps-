@@ -1,0 +1,799 @@
+Advanced Dynamic Analysis (DAST) in CI/CD
+Lab Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamentals of Dynamic Application Security Testing (DAST) in CI/CD pipelines • Configure and integrate OWASP ZAP for automated security scanning • Implement Semgrep for static analysis in GitLab CI/CD • Execute both baseline and full security scans • Generate comprehensive security reports • Analyze scan results and identify security vulnerabilities • Implement security gates in CI/CD pipelines
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of CI/CD concepts • Familiarity with GitLab and Git version control • Basic knowledge of web application security concepts • Understanding of YAML syntax • Basic Linux command line experience
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines with all necessary tools installed. Simply click Start Lab to access your environment - no need to build your own VM or install software.
+
+Your cloud machine includes: • GitLab Runner pre-installed • Docker and Docker Compose • OWASP ZAP • Semgrep • Sample vulnerable web application • All required dependencies
+
+Task 1: Environment Preparation and Initial Setup
+Subtask 1.1: Access Your Lab Environment
+Click Start Lab to access your cloud machine
+Open the terminal application
+Verify the pre-installed tools:
+# Check GitLab Runner
+gitlab-runner --version
+
+# Check Docker
+docker --version
+
+# Check OWASP ZAP
+docker run --rm owasp/zap2docker-stable zap-baseline.py --version
+
+# Check Semgrep
+semgrep --version
+Subtask 1.2: Clone the Sample Project
+Navigate to your home directory and clone the sample vulnerable application:
+cd ~
+git clone https://github.com/WebGoat/WebGoat.git
+cd WebGoat
+Create a new GitLab project structure:
+mkdir ~/dast-lab
+cd ~/dast-lab
+git init
+Create a simple vulnerable web application for testing:
+# Create application directory
+mkdir app
+cd app
+
+# Create a simple vulnerable PHP application
+cat > index.php << 'EOF'
+<?php
+// Vulnerable to SQL Injection
+if (isset($_GET['id'])) {
+    $id = $_GET['id'];
+    $query = "SELECT * FROM users WHERE id = " . $id;
+    echo "Query: " . $query;
+}
+
+// Vulnerable to XSS
+if (isset($_GET['name'])) {
+    echo "Hello " . $_GET['name'];
+}
+
+// Vulnerable to Command Injection
+if (isset($_GET['cmd'])) {
+    system($_GET['cmd']);
+}
+?>
+<html>
+<head><title>Vulnerable App</title></head>
+<body>
+    <h1>Test Application</h1>
+    <form method="GET">
+        <input type="text" name="id" placeholder="User ID">
+        <input type="submit" value="Search">
+    </form>
+    <form method="GET">
+        <input type="text" name="name" placeholder="Your Name">
+        <input type="submit" value="Greet">
+    </form>
+</body>
+</html>
+EOF
+Create a Dockerfile for the application:
+cat > Dockerfile << 'EOF'
+FROM php:7.4-apache
+COPY index.php /var/www/html/
+EXPOSE 80
+EOF
+Task 2: Configure Semgrep for Static Analysis
+Subtask 2.1: Create Semgrep Configuration
+Navigate back to the project root:
+cd ~/dast-lab
+Create a Semgrep configuration file:
+mkdir .semgrep
+cat > .semgrep/rules.yml << 'EOF'
+rules:
+  - id: sql-injection-risk
+    pattern: |
+      $QUERY = "SELECT * FROM $TABLE WHERE $COLUMN = " . $VAR
+    message: Potential SQL injection vulnerability detected
+    languages: [php]
+    severity: ERROR
+    
+  - id: xss-vulnerability
+    pattern: |
+      echo $VAR
+    message: Potential XSS vulnerability - user input not sanitized
+    languages: [php]
+    severity: WARNING
+    
+  - id: command-injection
+    pattern: |
+      system($VAR)
+    message: Command injection vulnerability detected
+    languages: [php]
+    severity: ERROR
+EOF
+Subtask 2.2: Test Semgrep Locally
+Run Semgrep scan on your application:
+semgrep --config=.semgrep/rules.yml app/ --json --output=semgrep-results.json
+View the results:
+cat semgrep-results.json | jq '.'
+Task 3: Configure OWASP ZAP Integration
+Subtask 3.1: Create ZAP Configuration Files
+Create a ZAP configuration directory:
+mkdir zap-config
+Create a ZAP baseline scan configuration:
+cat > zap-config/baseline-scan.conf << 'EOF'
+# ZAP Baseline Scan Configuration
+-t http://localhost:8080
+-g gen.conf
+-r zap-baseline-report.html
+-J zap-baseline-report.json
+EOF
+Create a ZAP full scan configuration:
+cat > zap-config/full-scan.conf << 'EOF'
+# ZAP Full Scan Configuration
+-t http://localhost:8080
+-g gen.conf
+-r zap-full-report.html
+-J zap-full-report.json
+-m 10
+EOF
+Subtask 3.2: Create Docker Compose for Testing Environment
+Create a docker-compose file for local testing:
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+services:
+  web-app:
+    build: ./app
+    ports:
+      - "8080:80"
+    networks:
+      - test-network
+      
+  zap:
+    image: owasp/zap2docker-stable
+    networks:
+      - test-network
+    volumes:
+      - ./zap-reports:/zap/wrk
+    command: zap-baseline.py -t http://web-app:80 -r baseline-report.html -J baseline-report.json
+
+networks:
+  test-network:
+    driver: bridge
+EOF
+Task 4: Create GitLab CI/CD Pipeline
+Subtask 4.1: Create GitLab CI/CD Configuration
+Create the main GitLab CI/CD pipeline file:
+cat > .gitlab-ci.yml << 'EOF'
+stages:
+  - build
+  - test
+  - sast
+  - dast-baseline
+  - dast-full
+  - report
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+services:
+  - docker:dind
+
+before_script:
+  - docker info
+
+build:
+  stage: build
+  image: docker:latest
+  script:
+    - cd app
+    - docker build -t vulnerable-app:$CI_COMMIT_SHA .
+    - docker tag vulnerable-app:$CI_COMMIT_SHA vulnerable-app:latest
+  artifacts:
+    reports:
+      dotenv: build.env
+
+sast-semgrep:
+  stage: sast
+  image: returntocorp/semgrep:latest
+  script:
+    - semgrep --config=.semgrep/rules.yml app/ --json --output=semgrep-results.json
+    - semgrep --config=.semgrep/rules.yml app/ --sarif --output=semgrep-results.sarif
+  artifacts:
+    reports:
+      sast: semgrep-results.sarif
+    paths:
+      - semgrep-results.json
+      - semgrep-results.sarif
+    expire_in: 1 week
+  allow_failure: true
+
+dast-zap-baseline:
+  stage: dast-baseline
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - mkdir -p zap-reports
+    - docker run -d --name vulnerable-app -p 8080:80 vulnerable-app:latest
+    - sleep 30
+    - docker run --rm --network host -v $(pwd)/zap-reports:/zap/wrk owasp/zap2docker-stable zap-baseline.py -t http://localhost:8080 -r baseline-report.html -J baseline-report.json || true
+    - docker stop vulnerable-app
+    - docker rm vulnerable-app
+  artifacts:
+    paths:
+      - zap-reports/baseline-report.html
+      - zap-reports/baseline-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+dast-zap-full:
+  stage: dast-full
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - mkdir -p zap-reports
+    - docker run -d --name vulnerable-app -p 8080:80 vulnerable-app:latest
+    - sleep 30
+    - docker run --rm --network host -v $(pwd)/zap-reports:/zap/wrk owasp/zap2docker-stable zap-full-scan.py -t http://localhost:8080 -r full-report.html -J full-report.json -m 5 || true
+    - docker stop vulnerable-app
+    - docker rm vulnerable-app
+  artifacts:
+    paths:
+      - zap-reports/full-report.html
+      - zap-reports/full-report.json
+    expire_in: 1 week
+  allow_failure: true
+  when: manual
+
+generate-security-report:
+  stage: report
+  image: python:3.9-slim
+  script:
+    - pip install jinja2 json2html
+    - python generate_report.py
+  artifacts:
+    paths:
+      - security-dashboard.html
+    expire_in: 1 week
+  dependencies:
+    - sast-semgrep
+    - dast-zap-baseline
+    - dast-zap-full
+EOF
+Subtask 4.2: Create Report Generation Script
+Create a Python script to generate consolidated security reports:
+cat > generate_report.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import os
+from datetime import datetime
+from jinja2 import Template
+
+def load_json_file(filepath):
+    """Load JSON file if it exists"""
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            return json.load(f)
+    return None
+
+def generate_security_dashboard():
+    """Generate comprehensive security dashboard"""
+    
+    # Load scan results
+    semgrep_results = load_json_file('semgrep-results.json')
+    zap_baseline = load_json_file('zap-reports/baseline-report.json')
+    zap_full = load_json_file('zap-reports/full-report.json')
+    
+    # HTML template
+    template_str = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Security Scan Dashboard</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { background-color: #f4f4f4; padding: 20px; border-radius: 5px; }
+            .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+            .critical { background-color: #ffebee; border-left: 5px solid #f44336; }
+            .warning { background-color: #fff3e0; border-left: 5px solid #ff9800; }
+            .info { background-color: #e3f2fd; border-left: 5px solid #2196f3; }
+            .success { background-color: #e8f5e8; border-left: 5px solid #4caf50; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>Security Scan Dashboard</h1>
+            <p>Generated on: {{ timestamp }}</p>
+        </div>
+        
+        <div class="section">
+            <h2>Scan Summary</h2>
+            <table>
+                <tr>
+                    <th>Scan Type</th>
+                    <th>Status</th>
+                    <th>Issues Found</th>
+                    <th>Severity</th>
+                </tr>
+                {% if semgrep_summary %}
+                <tr>
+                    <td>SAST (Semgrep)</td>
+                    <td>{{ semgrep_summary.status }}</td>
+                    <td>{{ semgrep_summary.total_issues }}</td>
+                    <td>{{ semgrep_summary.max_severity }}</td>
+                </tr>
+                {% endif %}
+                {% if zap_baseline_summary %}
+                <tr>
+                    <td>DAST Baseline (ZAP)</td>
+                    <td>{{ zap_baseline_summary.status }}</td>
+                    <td>{{ zap_baseline_summary.total_issues }}</td>
+                    <td>{{ zap_baseline_summary.max_severity }}</td>
+                </tr>
+                {% endif %}
+                {% if zap_full_summary %}
+                <tr>
+                    <td>DAST Full (ZAP)</td>
+                    <td>{{ zap_full_summary.status }}</td>
+                    <td>{{ zap_full_summary.total_issues }}</td>
+                    <td>{{ zap_full_summary.max_severity }}</td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+        
+        {% if semgrep_issues %}
+        <div class="section critical">
+            <h2>Static Analysis Issues (Semgrep)</h2>
+            <table>
+                <tr>
+                    <th>Rule ID</th>
+                    <th>Message</th>
+                    <th>File</th>
+                    <th>Line</th>
+                    <th>Severity</th>
+                </tr>
+                {% for issue in semgrep_issues %}
+                <tr>
+                    <td>{{ issue.check_id }}</td>
+                    <td>{{ issue.message }}</td>
+                    <td>{{ issue.path }}</td>
+                    <td>{{ issue.start.line }}</td>
+                    <td>{{ issue.extra.severity }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endif %}
+        
+        {% if zap_alerts %}
+        <div class="section warning">
+            <h2>Dynamic Analysis Issues (ZAP)</h2>
+            <table>
+                <tr>
+                    <th>Alert</th>
+                    <th>Risk</th>
+                    <th>Confidence</th>
+                    <th>URL</th>
+                    <th>Description</th>
+                </tr>
+                {% for alert in zap_alerts %}
+                <tr>
+                    <td>{{ alert.name }}</td>
+                    <td>{{ alert.riskdesc }}</td>
+                    <td>{{ alert.confidence }}</td>
+                    <td>{{ alert.url }}</td>
+                    <td>{{ alert.desc[:100] }}...</td>
+                </tr>
+                {% endfor %}
+            </table>
+        </div>
+        {% endif %}
+        
+        <div class="section info">
+            <h2>Recommendations</h2>
+            <ul>
+                <li>Review and fix all critical and high severity issues</li>
+                <li>Implement input validation and sanitization</li>
+                <li>Use parameterized queries to prevent SQL injection</li>
+                <li>Implement proper output encoding to prevent XSS</li>
+                <li>Regular security testing in CI/CD pipeline</li>
+            </ul>
+        </div>
+    </body>
+    </html>
+    """
+    
+    # Process data
+    context = {
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'semgrep_issues': [],
+        'zap_alerts': [],
+        'semgrep_summary': None,
+        'zap_baseline_summary': None,
+        'zap_full_summary': None
+    }
+    
+    # Process Semgrep results
+    if semgrep_results and 'results' in semgrep_results:
+        context['semgrep_issues'] = semgrep_results['results']
+        context['semgrep_summary'] = {
+            'status': 'Completed',
+            'total_issues': len(semgrep_results['results']),
+            'max_severity': 'ERROR' if any(r['extra']['severity'] == 'ERROR' for r in semgrep_results['results']) else 'WARNING'
+        }
+    
+    # Process ZAP baseline results
+    if zap_baseline and 'site' in zap_baseline:
+        alerts = []
+        for site in zap_baseline['site']:
+            if 'alerts' in site:
+                alerts.extend(site['alerts'])
+        context['zap_alerts'] = alerts
+        context['zap_baseline_summary'] = {
+            'status': 'Completed',
+            'total_issues': len(alerts),
+            'max_severity': 'High' if any(alert['riskcode'] == '3' for alert in alerts) else 'Medium'
+        }
+    
+    # Process ZAP full results
+    if zap_full and 'site' in zap_full:
+        alerts = []
+        for site in zap_full['site']:
+            if 'alerts' in site:
+                alerts.extend(site['alerts'])
+        if not context['zap_alerts']:  # Use full scan if baseline not available
+            context['zap_alerts'] = alerts
+        context['zap_full_summary'] = {
+            'status': 'Completed',
+            'total_issues': len(alerts),
+            'max_severity': 'High' if any(alert['riskcode'] == '3' for alert in alerts) else 'Medium'
+        }
+    
+    # Generate HTML report
+    template = Template(template_str)
+    html_content = template.render(**context)
+    
+    with open('security-dashboard.html', 'w') as f:
+        f.write(html_content)
+    
+    print("Security dashboard generated: security-dashboard.html")
+
+if __name__ == "__main__":
+    generate_security_dashboard()
+EOF
+Task 5: Execute and Test the Pipeline
+Subtask 5.1: Local Testing
+Test the application locally:
+# Build and run the application
+cd app
+docker build -t vulnerable-app .
+docker run -d -p 8080:80 --name test-app vulnerable-app
+
+# Wait for the application to start
+sleep 10
+
+# Test the application
+curl "http://localhost:8080/?id=1"
+curl "http://localhost:8080/?name=<script>alert('XSS')</script>"
+
+# Stop the test application
+docker stop test-app
+docker rm test-app
+Test Semgrep locally:
+cd ~/dast-lab
+semgrep --config=.semgrep/rules.yml app/ --json --output=test-semgrep.json
+cat test-semgrep.json | jq '.results[] | {rule: .check_id, message: .message, file: .path, line: .start.line}'
+Test ZAP baseline scan locally:
+# Start the application
+docker run -d -p 8080:80 --name test-app vulnerable-app
+
+# Run ZAP baseline scan
+mkdir -p test-zap-reports
+docker run --rm --network host -v $(pwd)/test-zap-reports:/zap/wrk owasp/zap2docker-stable zap-baseline.py -t http://localhost:8080 -r test-baseline.html -J test-baseline.json
+
+# Stop the application
+docker stop test-app
+docker rm test-app
+
+# View results
+ls -la test-zap-reports/
+Subtask 5.2: Commit and Push to GitLab
+Add all files to git:
+git add .
+git commit -m "Initial commit with DAST/SAST pipeline"
+Add GitLab remote (replace with your GitLab repository URL):
+git remote add origin https://gitlab.com/yourusername/dast-lab.git
+git push -u origin main
+Subtask 5.3: Monitor Pipeline Execution
+Navigate to your GitLab project in the web browser
+
+Go to CI/CD > Pipelines
+
+Monitor the pipeline execution stages:
+
+Build: Application container creation
+SAST: Semgrep static analysis
+DAST Baseline: ZAP baseline scan
+DAST Full: ZAP comprehensive scan (manual trigger)
+Report: Consolidated security dashboard
+Trigger the full DAST scan manually:
+
+Click on the pipeline
+Find the dast-zap-full job
+Click the Play button to start manual execution
+Task 6: Analyze Results and Generate Reports
+Subtask 6.1: Review Semgrep Results
+Download the Semgrep artifacts from GitLab:
+
+Go to CI/CD > Jobs
+Click on the sast-semgrep job
+Download the artifacts
+Analyze the results:
+
+# View Semgrep JSON results
+cat semgrep-results.json | jq '.results[] | {
+  rule: .check_id,
+  message: .message,
+  file: .path,
+  line: .start.line,
+  severity: .extra.severity
+}'
+Subtask 6.2: Review ZAP Scan Results
+Download ZAP scan artifacts from GitLab
+Analyze baseline scan results:
+# View ZAP baseline results summary
+cat zap-reports/baseline-report.json | jq '.site[0].alerts[] | {
+  name: .name,
+  risk: .riskdesc,
+  confidence: .confidence,
+  url: .url
+}'
+Compare baseline vs full scan results:
+# Count issues in baseline scan
+echo "Baseline scan issues:"
+cat zap-reports/baseline-report.json | jq '.site[0].alerts | length'
+
+# Count issues in full scan (if available)
+echo "Full scan issues:"
+cat zap-reports/full-report.json | jq '.site[0].alerts | length'
+Subtask 6.3: Generate and Review Security Dashboard
+Download the security dashboard from GitLab artifacts
+Open security-dashboard.html in a web browser
+Review the consolidated security findings:
+Scan Summary: Overview of all security scans
+Static Analysis Issues: Code-level vulnerabilities
+Dynamic Analysis Issues: Runtime vulnerabilities
+Recommendations: Security improvement suggestions
+Task 7: Implement Security Gates
+Subtask 7.1: Add Security Quality Gates
+Update the GitLab CI/CD pipeline to include security gates:
+cat >> .gitlab-ci.yml << 'EOF'
+
+security-gate:
+  stage: report
+  image: python:3.9-slim
+  script:
+    - pip install jq
+    - python security_gate.py
+  dependencies:
+    - sast-semgrep
+    - dast-zap-baseline
+  allow_failure: false
+EOF
+Create the security gate script:
+cat > security_gate.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import sys
+import os
+
+def check_security_gate():
+    """Check if security findings exceed acceptable thresholds"""
+    
+    # Define thresholds
+    MAX_CRITICAL_ISSUES = 0
+    MAX_HIGH_ISSUES = 2
+    MAX_MEDIUM_ISSUES = 5
+    
+    total_critical = 0
+    total_high = 0
+    total_medium = 0
+    
+    # Check Semgrep results
+    if os.path.exists('semgrep-results.json'):
+        with open('semgrep-results.json', 'r') as f:
+            semgrep_data = json.load(f)
+            for result in semgrep_data.get('results', []):
+                severity = result.get('extra', {}).get('severity', '').upper()
+                if severity == 'ERROR':
+                    total_critical += 1
+                elif severity == 'WARNING':
+                    total_medium += 1
+    
+    # Check ZAP results
+    if os.path.exists('zap-reports/baseline-report.json'):
+        with open('zap-reports/baseline-report.json', 'r') as f:
+            zap_data = json.load(f)
+            for site in zap_data.get('site', []):
+                for alert in site.get('alerts', []):
+                    risk_code = alert.get('riskcode', '0')
+                    if risk_code == '3':  # High
+                        total_high += 1
+                    elif risk_code == '2':  # Medium
+                        total_medium += 1
+                    elif risk_code == '1':  # Low
+                        pass  # Not blocking
+    
+    # Print summary
+    print(f"Security Gate Summary:")
+    print(f"Critical Issues: {total_critical} (Max: {MAX_CRITICAL_ISSUES})")
+    print(f"High Issues: {total_high} (Max: {MAX_HIGH_ISSUES})")
+    print(f"Medium Issues: {total_medium} (Max: {MAX_MEDIUM_ISSUES})")
+    
+    # Check thresholds
+    if total_critical > MAX_CRITICAL_ISSUES:
+        print(f"❌ FAILED: Critical issues ({total_critical}) exceed threshold ({MAX_CRITICAL_ISSUES})")
+        sys.exit(1)
+    
+    if total_high > MAX_HIGH_ISSUES:
+        print(f"❌ FAILED: High issues ({total_high}) exceed threshold ({MAX_HIGH_ISSUES})")
+        sys.exit(1)
+    
+    if total_medium > MAX_MEDIUM_ISSUES:
+        print(f"❌ FAILED: Medium issues ({total_medium}) exceed threshold ({MAX_MEDIUM_ISSUES})")
+        sys.exit(1)
+    
+    print("✅ PASSED: Security gate requirements met")
+    return True
+
+if __name__ == "__main__":
+    check_security_gate()
+EOF
+Subtask 7.2: Test Security Gates
+Commit and push the security gate changes:
+git add .
+git commit -m "Add security quality gates"
+git push origin main
+Monitor the pipeline execution and observe how security gates work:
+If security issues exceed thresholds, the pipeline will fail
+Review the security gate output in the job logs
+Adjust thresholds based on your security requirements
+Task 8: Advanced Configuration and Optimization
+Subtask 8.1: Configure ZAP Custom Rules
+Create custom ZAP scanning rules:
+mkdir -p zap-config/rules
+cat > zap-config/rules/custom-rules.conf << 'EOF'
+# Custom ZAP scanning rules
+# Enable additional passive scan rules
+scanner.strength=HIGH
+scanner.attackstrength=HIGH
+
+# Custom authentication
+auth.method=form
+auth.loginurl=http://localhost:8080/login
+auth.username=admin
+auth.password=admin
+
+# Custom context
+context.name=WebApp
+context.includeurls=http://localhost:8080.*
+context.excludeurls=http://localhost:8080/logout
+EOF
+Update the ZAP scan commands to use custom configuration:
+# Update the GitLab CI/CD pipeline ZAP commands
+sed -i 's/zap-baseline.py -t/zap-baseline.py -c zap-config\/rules\/custom-rules.conf -t/g' .gitlab-ci.yml
+Subtask 8.2: Implement Scan Result Caching
+Add caching to improve pipeline performance:
+cat >> .gitlab-ci.yml << 'EOF'
+
+cache:
+  key: security-scans-$CI_COMMIT_REF_SLUG
+  paths:
+    - zap-reports/
+    - semgrep-results.json
+  policy: pull-push
+EOF
+Subtask 8.3: Add Notification Integration
+Create a notification script for security findings:
+cat > notify_security_results.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import os
+import requests
+
+def send_notification():
+    """Send notification about security scan results"""
+    
+    # Webhook URL (replace with your actual webhook)
+    webhook_url = os.environ.get('SECURITY_WEBHOOK_URL', '')
+    
+    if not webhook_url:
+        print("No webhook URL configured")
+        return
+    
+    # Collect scan results
+    message = "🔒 Security Scan Results\n\n"
+    
+    # Add Semgrep results
+    if os.path.exists('semgrep-results.json'):
+        with open('semgrep-results.json', 'r') as f:
+            semgrep_data = json.load(f)
+            issue_count = len(semgrep_data.get('results', []))
+            message += f"📊 SAST (Semgrep): {issue_count} issues found\n"
+    
+    # Add ZAP results
+    if os.path.exists('zap-reports/baseline-report.json'):
+        with open('zap-reports/baseline-report.json', 'r') as f:
+            zap_data = json.load(f)
+            alert_count = sum(len(site.get('alerts', [])) for site in zap_data.get('site', []))
+            message += f"🕷️ DAST (ZAP): {alert_count} alerts found\n"
+    
+    message += f"\n📋 View detailed report: {os.environ.get('CI_PIPELINE_URL', 'N/A')}"
+    
+    # Send notification (example for Slack webhook)
+    payload = {
+        "text": message,
+        "username": "Security Scanner",
+        "icon_emoji": ":shield:"
+    }
+    
+    try:
+        response = requests.post(webhook_url, json=payload)
+        if response.status_code == 200:
+            print("Notification sent successfully")
+        else:
+            print(f"Failed to send notification: {response.status_code}")
+    except Exception as e:
+        print(f"Error sending notification: {e}")
+
+if __name__ == "__main__":
+    send_notification()
+EOF
+Troubleshooting Common Issues
+Issue 1: ZAP Scan Fails to Connect
+Problem: ZAP cannot connect to the application Solution:
+
+# Check if application is running
+docker ps | grep vulnerable-app
+
+# Check application logs
+docker logs vulnerable-app
+
+# Verify network connectivity
+docker run --rm --network host curlimages/curl curl -I http://localhost:8080
+Issue 2: Semgrep Rules Not Triggering
+Problem: Semgrep doesn't find expected vulnerabilities Solution:
+
+# Test rules manually
+semgrep --config=.semgrep/rules.yml app/ --verbose
+
+# Check rule syntax
+semgrep --validate .semgrep/rules.yml
+
+# Test with default rules
+semgrep --config=auto app/
+Issue 3: Pipeline Artifacts Not Generated
+Problem: Reports are not available in GitLab Solution:
+
+# Check artifact paths in .gitlab-ci.yml
+# Ensure paths exist before archiving
+ls -la zap-reports/
+ls -la semgrep-results.json
+
+# Add debug output to pipeline
+echo "Current directory: $(pwd)"
+echo "Files present: $(ls -la)"
+Issue 4: Security Gate False Positives
+Problem: Security gates block legitimate deployments Solution:
+
+# Adjust thresh
