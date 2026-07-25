@@ -1,0 +1,91 @@
+stages:
+  - build
+  - security-scan
+  - security-gate
+  - compliance-check
+  - deploy
+
+variables:
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+
+build:
+  stage: build
+  script:
+    - docker build -t $DOCKER_IMAGE .
+    - docker push $DOCKER_IMAGE
+
+sast-scan:
+  stage: security-scan
+  script:
+    - bandit -r . -f json -o bandit-results.json
+    - semgrep --config=auto --json --output=semgrep-results.json .
+  artifacts:
+    reports:
+      sast: [bandit-results.json, semgrep-results.json]
+    paths:
+      - bandit-results.json
+      - semgrep-results.json
+
+dependency-scan:
+  stage: security-scan
+  script:
+    - safety check --json --output safety-results.json
+  artifacts:
+    reports:
+      dependency_scanning: safety-results.json
+    paths:
+      - safety-results.json
+
+container-scan:
+  stage: security-scan
+  script:
+    - trivy image --format json --output trivy-results.json $DOCKER_IMAGE
+  artifacts:
+    reports:
+      container_scanning: trivy-results.json
+    paths:
+      - trivy-results.json
+
+security-gate:
+  stage: security-gate
+  script:
+    - python3 security-gate.py
+  dependencies:
+    - sast-scan
+    - dependency-scan
+    - container-scan
+  artifacts:
+    paths:
+      - reports/level3/security-gate-report.json
+
+compliance-check:
+  stage: compliance-check
+  script:
+    - python3 compliance-check.py
+  artifacts:
+    paths:
+      - reports/level3/compliance-report.json
+      - reports/level3/compliance-report.md
+
+deploy-staging:
+  stage: deploy
+  script:
+    - echo "Deploying to staging environment"
+    - docker run -d -p 5001:5000 --name staging-app $DOCKER_IMAGE
+  dependencies:
+    - security-gate
+    - compliance-check
+  only:
+    - develop
+
+deploy-production:
+  stage: deploy
+  script:
+    - echo "Deploying to production environment"
+    - docker run -d -p 5002:5000 --name production-app $DOCKER_IMAGE
+  dependencies:
+    - security-gate
+    - compliance-check
+  only:
+    - main
+  when: manual
