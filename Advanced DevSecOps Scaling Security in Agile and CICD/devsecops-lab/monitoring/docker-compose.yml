@@ -59,3 +59,8 @@ volumes:
 networks:
   monitoring:
     driver: bridge
+
+        volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
