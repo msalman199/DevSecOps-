@@ -1,0 +1,100 @@
+---
+- name: Configure Database Servers
+  hosts: databases
+  become: yes
+  vars_files:
+    - ../vault/secrets.yml
+  vars:
+    mysql_root_password: "{{ db_root_password }}"
+    mysql_app_user: "appuser"
+    mysql_app_password: "{{ db_app_password }}"
+    mysql_database: "devsecops_app"
+
+  tasks:
+    - name: Install MySQL/MariaDB
+      yum:
+        name:
+          - mariadb-server
+          - mariadb
+          - python3-PyMySQL
+        state: present
+      tags: [database, packages]
+
+    - name: Start and enable MariaDB
+      systemd:
+        name: mariadb
+        state: started
+        enabled: yes
+      tags: [database, services]
+
+    - name: Set MySQL root password
+      mysql_user:
+        name: root
+        password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/lib/mysql/mysql.sock
+        state: present
+      tags: [database, security]
+
+    - name: Create MySQL configuration file
+      copy:
+        content: |
+          [client]
+          user=root
+          password={{ mysql_root_password }}
+        dest: /root/.my.cnf
+        mode: '0600'
+        owner: root
+        group: root
+      tags: [database, configuration]
+
+    - name: Remove anonymous MySQL users
+      mysql_user:
+        name: ""
+        host_all: yes
+        state: absent
+      tags: [database, security]
+
+    - name: Remove MySQL test database
+      mysql_db:
+        name: test
+        state: absent
+      tags: [database, security]
+
+    - name: Create application database
+      mysql_db:
+        name: "{{ mysql_database }}"
+        state: present
+      tags: [database, application]
+
+    - name: Create application database user
+      mysql_user:
+        name: "{{ mysql_app_user }}"
+        password: "{{ mysql_app_password }}"
+        priv: "{{ mysql_database }}.*:ALL"
+        host: "%"
+        state: present
+      tags: [database, application]
+
+    - name: Configure MySQL for remote connections
+      lineinfile:
+        path: /etc/my.cnf.d/server.cnf
+        regexp: '^bind-address'
+        line: 'bind-address = 0.0.0.0'
+        insertafter: '^\[mysqld\]'
+      notify: restart mariadb
+      tags: [database, configuration]
+
+    - name: Configure firewall for MySQL
+      firewalld:
+        port: 3306/tcp
+        permanent: yes
+        state: enabled
+        immediate: yes
+      ignore_errors: yes
+      tags: [database, firewall]
+
+  handlers:
+    - name: restart mariadb
+      systemd:
+        name: mariadb
+        state: restarted
