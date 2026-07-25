@@ -1,0 +1,870 @@
+Infrastructure as Code (IaC) and Its Security
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamentals of Infrastructure as Code (IaC) and its security implications • Create and deploy infrastructure using Terraform templates • Implement security scanning for IaC templates using Terraform Validator and Checkov • Write and enforce security policies using Pulumi and Open Policy Agent (OPA) • Integrate security policy enforcement into CI/CD pipelines • Apply security best practices for cloud infrastructure automation
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of cloud computing concepts • Familiarity with command-line interface operations • Basic knowledge of YAML and JSON file formats • Understanding of version control systems (Git) • No prior experience with Terraform or Pulumi required
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides Linux-based cloud machines for this lab. Simply click Start Lab to access your pre-configured environment. No need to build your own VM or install additional software.
+
+Your lab environment includes: • Ubuntu 20.04 LTS with all required tools pre-installed • Terraform v1.6+ • Pulumi CLI • Checkov security scanner • Open Policy Agent (OPA) • Git and text editors
+
+Task 1: Infrastructure as Code with Terraform
+Subtask 1.1: Understanding IaC Fundamentals
+Infrastructure as Code (IaC) allows you to manage and provision infrastructure through code rather than manual processes. This approach provides:
+
+• Consistency: Same infrastructure every time • Version Control: Track changes and rollback if needed • Automation: Reduce manual errors and deployment time • Security: Implement security policies as code
+
+Subtask 1.2: Create Your First Terraform Template
+Let's start by creating a simple AWS infrastructure template.
+
+Create a new directory for your project:
+mkdir terraform-security-lab
+cd terraform-security-lab
+Create the main Terraform configuration file:
+nano main.tf
+Add the following Terraform configuration:
+# Configure the AWS Provider
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  required_version = ">= 1.0"
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+# Create a VPC
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "main-vpc"
+    Environment = "lab"
+  }
+}
+
+# Create an Internet Gateway
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "main-igw"
+  }
+}
+
+# Create a public subnet
+resource "aws_subnet" "public" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "public-subnet"
+  }
+}
+
+# Create an S3 bucket (intentionally insecure for demonstration)
+resource "aws_s3_bucket" "example" {
+  bucket = "my-insecure-bucket-${random_string.bucket_suffix.result}"
+
+  tags = {
+    Name        = "ExampleBucket"
+    Environment = "lab"
+  }
+}
+
+# Make the S3 bucket public (security issue)
+resource "aws_s3_bucket_public_access_block" "example" {
+  bucket = aws_s3_bucket.example.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+# Random string for unique bucket naming
+resource "random_string" "bucket_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+Create a variables file:
+nano variables.tf
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "lab"
+}
+
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-east-1"
+}
+Create an outputs file:
+nano outputs.tf
+output "vpc_id" {
+  description = "ID of the VPC"
+  value       = aws_vpc.main.id
+}
+
+output "bucket_name" {
+  description = "Name of the S3 bucket"
+  value       = aws_s3_bucket.example.bucket
+}
+Subtask 1.3: Initialize and Validate Terraform
+Initialize Terraform:
+terraform init
+Validate the configuration:
+terraform validate
+Format the code:
+terraform fmt
+Create an execution plan:
+terraform plan
+Task 2: Security Scanning with Terraform Validator and Checkov
+Subtask 2.1: Install and Use Terraform Validator
+Terraform Validator helps ensure your configurations follow best practices.
+
+Install Terraform Validator (if not already installed):
+# Download and install terraform-validator
+wget https://github.com/GoogleCloudPlatform/terraform-validator/releases/download/v0.7.0/terraform-validator-linux-amd64
+chmod +x terraform-validator-linux-amd64
+sudo mv terraform-validator-linux-amd64 /usr/local/bin/terraform-validator
+Run Terraform Validator:
+terraform-validator validate --policy-path=./policies ./
+Subtask 2.2: Security Scanning with Checkov
+Checkov is a static code analysis tool for infrastructure as code.
+
+Install Checkov (if not already installed):
+pip3 install checkov
+Run Checkov scan on your Terraform files:
+checkov -f main.tf
+Generate a detailed report:
+checkov -f main.tf --output json > checkov-report.json
+View the JSON report:
+cat checkov-report.json | jq '.'
+Subtask 2.3: Analyze Security Issues
+Review the Checkov output and identify security issues. Common issues you'll see:
+
+• S3 bucket public access: The bucket allows public access • Missing encryption: S3 bucket doesn't have encryption enabled • No versioning: S3 bucket versioning is not enabled • Missing access logging: No access logs configured
+
+Subtask 2.4: Fix Security Issues
+Create a secure version of the Terraform template:
+nano main-secure.tf
+# Configure the AWS Provider
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+  required_version = ">= 1.0"
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+# Create a VPC
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "main-vpc"
+    Environment = "lab"
+  }
+}
+
+# Create a secure S3 bucket
+resource "aws_s3_bucket" "secure_example" {
+  bucket = "my-secure-bucket-${random_string.bucket_suffix.result}"
+
+  tags = {
+    Name        = "SecureExampleBucket"
+    Environment = "lab"
+  }
+}
+
+# Block all public access to S3 bucket
+resource "aws_s3_bucket_public_access_block" "secure_example" {
+  bucket = aws_s3_bucket.secure_example.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# Enable S3 bucket encryption
+resource "aws_s3_bucket_server_side_encryption_configuration" "secure_example" {
+  bucket = aws_s3_bucket.secure_example.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Enable S3 bucket versioning
+resource "aws_s3_bucket_versioning" "secure_example" {
+  bucket = aws_s3_bucket.secure_example.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# Random string for unique bucket naming
+resource "random_string" "bucket_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+Run Checkov on the secure template:
+checkov -f main-secure.tf
+Task 3: Infrastructure as Code with Pulumi
+Subtask 3.1: Initialize Pulumi Project
+Create a new directory for Pulumi:
+mkdir pulumi-security-lab
+cd pulumi-security-lab
+Initialize a new Pulumi project:
+pulumi new aws-python --yes
+Install required dependencies:
+pip3 install pulumi pulumi-aws
+Subtask 3.2: Create Pulumi Infrastructure Template
+Edit the main Pulumi file:
+nano __main__.py
+import pulumi
+import pulumi_aws as aws
+
+# Create a VPC
+vpc = aws.ec2.Vpc("main-vpc",
+    cidr_block="10.0.0.0/16",
+    enable_dns_hostnames=True,
+    enable_dns_support=True,
+    tags={
+        "Name": "main-vpc",
+        "Environment": "lab"
+    }
+)
+
+# Create a secure S3 bucket
+bucket = aws.s3.Bucket("secure-bucket",
+    tags={
+        "Name": "SecureBucket",
+        "Environment": "lab"
+    }
+)
+
+# Block all public access
+bucket_public_access_block = aws.s3.BucketPublicAccessBlock("bucket-pab",
+    bucket=bucket.id,
+    block_public_acls=True,
+    block_public_policy=True,
+    ignore_public_acls=True,
+    restrict_public_buckets=True
+)
+
+# Enable server-side encryption
+bucket_encryption = aws.s3.BucketServerSideEncryptionConfiguration("bucket-encryption",
+    bucket=bucket.id,
+    rules=[aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+        apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+            sse_algorithm="AES256"
+        )
+    )]
+)
+
+# Enable versioning
+bucket_versioning = aws.s3.BucketVersioning("bucket-versioning",
+    bucket=bucket.id,
+    versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+        status="Enabled"
+    )
+)
+
+# Export the bucket name and VPC ID
+pulumi.export("bucket_name", bucket.bucket)
+pulumi.export("vpc_id", vpc.id)
+Subtask 3.3: Create Security Policy with OPA
+Create a policies directory:
+mkdir policies
+cd policies
+Create an OPA policy for S3 bucket security:
+nano s3-security-policy.rego
+package pulumi.s3
+
+# Deny S3 buckets that allow public access
+deny[msg] {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock"
+    
+    # Check if any public access is allowed
+    resource.properties.blockPublicAcls == false
+    msg := sprintf("S3 bucket public access block must block public ACLs: %s", [resource.name])
+}
+
+deny[msg] {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock"
+    
+    resource.properties.blockPublicPolicy == false
+    msg := sprintf("S3 bucket public access block must block public policies: %s", [resource.name])
+}
+
+deny[msg] {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock"
+    
+    resource.properties.ignorePublicAcls == false
+    msg := sprintf("S3 bucket public access block must ignore public ACLs: %s", [resource.name])
+}
+
+deny[msg] {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock"
+    
+    resource.properties.restrictPublicBuckets == false
+    msg := sprintf("S3 bucket public access block must restrict public buckets: %s", [resource.name])
+}
+
+# Require encryption for S3 buckets
+deny[msg] {
+    bucket := input.resources[_]
+    bucket.type == "aws:s3/bucket:Bucket"
+    
+    # Check if there's no corresponding encryption configuration
+    not has_encryption_config(bucket.name)
+    msg := sprintf("S3 bucket must have server-side encryption enabled: %s", [bucket.name])
+}
+
+has_encryption_config(bucket_name) {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucketServerSideEncryptionConfiguration:BucketServerSideEncryptionConfiguration"
+    resource.properties.bucket == bucket_name
+}
+
+# Require versioning for S3 buckets
+deny[msg] {
+    bucket := input.resources[_]
+    bucket.type == "aws:s3/bucket:Bucket"
+    
+    not has_versioning_enabled(bucket.name)
+    msg := sprintf("S3 bucket must have versioning enabled: %s", [bucket.name])
+}
+
+has_versioning_enabled(bucket_name) {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucketVersioning:BucketVersioning"
+    resource.properties.bucket == bucket_name
+    resource.properties.versioningConfiguration.status == "Enabled"
+}
+Subtask 3.4: Create Policy Validation Script
+Go back to the main directory:
+cd ..
+Create a policy validation script:
+nano validate-policy.py
+#!/usr/bin/env python3
+
+import json
+import subprocess
+import sys
+import os
+
+def run_opa_eval(policy_path, data_path):
+    """Run OPA evaluation on the given policy and data"""
+    try:
+        cmd = [
+            "opa", "eval",
+            "-d", policy_path,
+            "-i", data_path,
+            "data.pulumi.s3.deny"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Error running OPA: {result.stderr}")
+            return None
+            
+        return json.loads(result.stdout)
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+def main():
+    # Generate Pulumi preview to get resource data
+    print("Generating Pulumi preview...")
+    
+    try:
+        # Run pulumi preview and capture JSON output
+        preview_cmd = ["pulumi", "preview", "--json"]
+        preview_result = subprocess.run(preview_cmd, capture_output=True, text=True)
+        
+        if preview_result.returncode != 0:
+            print(f"Error running pulumi preview: {preview_result.stderr}")
+            sys.exit(1)
+            
+        # Parse the preview output to extract resources
+        preview_lines = preview_result.stdout.strip().split('\n')
+        resources = []
+        
+        for line in preview_lines:
+            try:
+                data = json.loads(line)
+                if data.get('type') == 'resourcePreEvent':
+                    resource_info = {
+                        'name': data['metadata']['urn'].split('::')[-1],
+                        'type': data['metadata']['type'],
+                        'properties': data.get('metadata', {}).get('new', {}).get('inputs', {})
+                    }
+                    resources.append(resource_info)
+            except json.JSONDecodeError:
+                continue
+        
+        # Create input data for OPA
+        opa_input = {
+            'resources': resources
+        }
+        
+        # Write input data to temporary file
+        with open('opa-input.json', 'w') as f:
+            json.dump(opa_input, f, indent=2)
+        
+        print("Running OPA policy evaluation...")
+        
+        # Run OPA evaluation
+        result = run_opa_eval('policies/s3-security-policy.rego', 'opa-input.json')
+        
+        if result is None:
+            sys.exit(1)
+            
+        # Check for policy violations
+        violations = result.get('result', [])
+        
+        if violations:
+            print("\nPolicy violations found:")
+            for violation in violations:
+                print(f"- {violation}")
+            sys.exit(1)
+        else:
+            print("\nNo policy violations found. Infrastructure is compliant!")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    finally:
+        # Clean up temporary file
+        if os.path.exists('opa-input.json'):
+            os.remove('opa-input.json')
+
+if __name__ == "__main__":
+    main()
+Make the script executable:
+chmod +x validate-policy.py
+Task 4: Automate Policy Enforcement in CI/CD Pipeline
+Subtask 4.1: Create GitHub Actions Workflow
+Create the GitHub Actions directory:
+mkdir -p .github/workflows
+Create a CI/CD workflow file:
+nano .github/workflows/iac-security.yml
+name: IaC Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  terraform-security:
+    runs-on: ubuntu-latest
+    name: Terraform Security Scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+        
+    - name: Terraform Init
+      run: terraform init
+      working-directory: ./terraform-security-lab
+      
+    - name: Terraform Validate
+      run: terraform validate
+      working-directory: ./terraform-security-lab
+      
+    - name: Install Checkov
+      run: pip3 install checkov
+      
+    - name: Run Checkov Scan
+      run: |
+        checkov -f main.tf --output json > checkov-results.json
+        checkov -f main.tf --output cli
+      working-directory: ./terraform-security-lab
+      continue-on-error: true
+      
+    - name: Upload Checkov Results
+      uses: actions/upload-artifact@v3
+      with:
+        name: checkov-results
+        path: ./terraform-security-lab/checkov-results.json
+
+  pulumi-security:
+    runs-on: ubuntu-latest
+    name: Pulumi Security Validation
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install Pulumi CLI
+      uses: pulumi/actions@v4
+      
+    - name: Install dependencies
+      run: pip3 install pulumi pulumi-aws
+      working-directory: ./pulumi-security-lab
+      
+    - name: Install OPA
+      run: |
+        curl -L -o opa https://openpolicyagent.org/downloads/v0.57.0/opa_linux_amd64_static
+        chmod +x opa
+        sudo mv opa /usr/local/bin/
+        
+    - name: Pulumi Preview
+      run: pulumi preview --stack dev
+      working-directory: ./pulumi-security-lab
+      env:
+        PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        
+    - name: Run Policy Validation
+      run: python3 validate-policy.py
+      working-directory: ./pulumi-security-lab
+      env:
+        PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+
+  security-gate:
+    runs-on: ubuntu-latest
+    name: Security Gate
+    needs: [terraform-security, pulumi-security]
+    
+    steps:
+    - name: Security Gate Check
+      run: |
+        echo "All security checks completed successfully!"
+        echo "Infrastructure is ready for deployment."
+Subtask 4.2: Create Pre-commit Hooks
+Create a pre-commit configuration:
+nano .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.83.5
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+      - id: terraform_docs
+      - id: checkov
+        args: [--framework, terraform]
+
+  - repo: https://github.com/bridgecrewio/checkov
+    rev: 3.0.34
+    hooks:
+      - id: checkov
+        name: Checkov Pulumi
+        entry: checkov
+        language: python
+        files: \.py$
+        args: [--framework, pulumi]
+Install pre-commit:
+pip3 install pre-commit
+pre-commit install
+Subtask 4.3: Test the Security Pipeline
+Create a test script:
+nano test-pipeline.sh
+#!/bin/bash
+
+echo "Testing IaC Security Pipeline..."
+
+# Test Terraform security scanning
+echo "1. Testing Terraform security scanning..."
+cd terraform-security-lab
+
+echo "   - Running terraform init..."
+terraform init
+
+echo "   - Running terraform validate..."
+terraform validate
+
+echo "   - Running Checkov scan..."
+checkov -f main.tf
+
+echo "   - Running Checkov on secure template..."
+checkov -f main-secure.tf
+
+cd ..
+
+# Test Pulumi security validation
+echo "2. Testing Pulumi security validation..."
+cd pulumi-security-lab
+
+echo "   - Running Pulumi preview..."
+pulumi preview --stack dev --yes
+
+echo "   - Running policy validation..."
+python3 validate-policy.py
+
+cd ..
+
+echo "Pipeline testing completed!"
+Make the script executable and run it:
+chmod +x test-pipeline.sh
+./test-pipeline.sh
+Task 5: Advanced Security Configurations
+Subtask 5.1: Create Custom Security Policies
+Create additional OPA policies:
+nano policies/advanced-security.rego
+package pulumi.advanced
+
+# Require specific tags on all resources
+required_tags := ["Environment", "Owner", "Project"]
+
+deny[msg] {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucket:Bucket"
+    
+    missing_tags := required_tags[_]
+    not resource.properties.tags[missing_tags]
+    
+    msg := sprintf("Resource %s is missing required tag: %s", [resource.name, missing_tags])
+}
+
+# Enforce naming conventions
+deny[msg] {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucket:Bucket"
+    
+    not startswith(resource.name, "secure-")
+    msg := sprintf("S3 bucket name must start with 'secure-': %s", [resource.name])
+}
+
+# Require MFA delete for S3 buckets in production
+deny[msg] {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucket:Bucket"
+    resource.properties.tags.Environment == "production"
+    
+    not has_mfa_delete(resource.name)
+    msg := sprintf("Production S3 bucket must have MFA delete enabled: %s", [resource.name])
+}
+
+has_mfa_delete(bucket_name) {
+    resource := input.resources[_]
+    resource.type == "aws:s3/bucketVersioning:BucketVersioning"
+    resource.properties.bucket == bucket_name
+    resource.properties.versioningConfiguration.mfaDelete == "Enabled"
+}
+Subtask 5.2: Create Security Monitoring Dashboard
+Create a monitoring script:
+nano security-monitor.py
+#!/usr/bin/env python3
+
+import json
+import subprocess
+import datetime
+import os
+
+def generate_security_report():
+    """Generate a comprehensive security report"""
+    
+    report = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "terraform_scan": {},
+        "pulumi_scan": {},
+        "summary": {}
+    }
+    
+    # Run Terraform security scan
+    print("Running Terraform security scan...")
+    try:
+        os.chdir("terraform-security-lab")
+        
+        # Run Checkov on Terraform files
+        result = subprocess.run(
+            ["checkov", "-f", "main.tf", "--output", "json"],
+            capture_output=True, text=True
+        )
+        
+        if result.stdout:
+            terraform_results = json.loads(result.stdout)
+            report["terraform_scan"] = {
+                "total_checks": len(terraform_results.get("results", {}).get("failed_checks", [])) + 
+                               len(terraform_results.get("results", {}).get("passed_checks", [])),
+                "failed_checks": len(terraform_results.get("results", {}).get("failed_checks", [])),
+                "passed_checks": len(terraform_results.get("results", {}).get("passed_checks", [])),
+                "details": terraform_results
+            }
+        
+        os.chdir("..")
+        
+    except Exception as e:
+        print(f"Error scanning Terraform: {e}")
+        report["terraform_scan"]["error"] = str(e)
+    
+    # Run Pulumi security validation
+    print("Running Pulumi security validation...")
+    try:
+        os.chdir("pulumi-security-lab")
+        
+        # Run policy validation
+        result = subprocess.run(
+            ["python3", "validate-policy.py"],
+            capture_output=True, text=True
+        )
+        
+        report["pulumi_scan"] = {
+            "status": "passed" if result.returncode == 0 else "failed",
+            "output": result.stdout,
+            "errors": result.stderr
+        }
+        
+        os.chdir("..")
+        
+    except Exception as e:
+        print(f"Error validating Pulumi: {e}")
+        report["pulumi_scan"]["error"] = str(e)
+    
+    # Generate summary
+    terraform_failed = report["terraform_scan"].get("failed_checks", 0)
+    pulumi_status = report["pulumi_scan"].get("status", "unknown")
+    
+    report["summary"] = {
+        "overall_status": "passed" if terraform_failed == 0 and pulumi_status == "passed" else "failed",
+        "terraform_issues": terraform_failed,
+        "pulumi_compliant": pulumi_status == "passed",
+        "recommendations": []
+    }
+    
+    if terraform_failed > 0:
+        report["summary"]["recommendations"].append("Fix Terraform security issues identified by Checkov")
+    
+    if pulumi_status != "passed":
+        report["summary"]["recommendations"].append("Address Pulumi policy violations")
+    
+    return report
+
+def main():
+    print("Generating IaC Security Report...")
+    
+    report = generate_security_report()
+    
+    # Save report to file
+    with open("security-report.json", "w") as f:
+        json.dump(report, f, indent=2)
+    
+    # Print summary
+    print("\n" + "="*50)
+    print("SECURITY REPORT SUMMARY")
+    print("="*50)
+    print(f"Timestamp: {report['timestamp']}")
+    print(f"Overall Status: {report['summary']['overall_status'].upper()}")
+    print(f"Terraform Issues: {report['summary']['terraform_issues']}")
+    print(f"Pulumi Compliant: {report['summary']['pulumi_compliant']}")
+    
+    if report['summary']['recommendations']:
+        print("\nRecommendations:")
+        for rec in report['summary']['recommendations']:
+            print(f"- {rec}")
+    
+    print(f"\nDetailed report saved to: security-report.json")
+
+if __name__ == "__main__":
+    main()
+Make the script executable and run it:
+chmod +x security-monitor.py
+python3 security-monitor.py
+Troubleshooting Common Issues
+Issue 1: Terraform Provider Download Fails
+Problem: Terraform init fails to download providers
+
+Solution:
+
+# Clear Terraform cache and reinitialize
+rm -rf .terraform
+rm .terraform.lock.hcl
+terraform init
+Issue 2: Checkov Command Not Found
+Problem: Checkov is not installed or not in PATH
+
+Solution:
+
+# Install Checkov using pip
+pip3 install --user checkov
+# Add to PATH if needed
+export PATH=$PATH:~/.local/bin
+Issue 3: OPA Policy Evaluation Fails
+Problem: OPA cannot evaluate the policy
+
+Solution:
+
+# Test OPA policy syntax
+opa fmt policies/s3-security-policy.rego
+# Test policy with sample data
+opa eval -d policies/s3-security-policy.rego "data.pulumi.s3"
+Issue 4: Pulumi Stack Not Found
+Problem: Pulumi cannot find the specified stack
+
+Solution:
+
+# Create a new stack
+pulumi stack init dev
+# Or select existing stack
+pulumi stack select dev
+Conclusion
+In this comprehensive lab, you have successfully:
+
+• Learned IaC Fundamentals: Understanding how Infrastructure as Code improves consistency, security, and automation in cloud deployments
+
+• Created Terraform Templates: Built both insecure and secure infrastructure templates, demonstrating the importance of security-first design
+
+• Implemented Security Scanning: Used Checkov and Terraform Validator to identify and fix security vulnerabilities in your infrastructure code
+
+• Worked with Pulumi: Created infrastructure using a different IaC tool and learned how to write security policies using Open Policy Agent
+
+• Automated Security Enforcement: Built a complete CI/CD pipeline that automatically validates security policies before deployment
+
+• Applied Security Best Practices: Implemented encryption, access controls, and monitoring for cloud resources
+
+Why This Matters:
+
+Infrastructure as Code security is critical in modern cloud environments. By implementing security scanning and policy enforcement early in the development process, you can prevent security vulnerabilities from reaching production. The skills you've learned in this lab are directly applicable to real-world DevSecOps practices, where security is integrated throughout the entire software development lifecycle.
+
+Next Steps: Consider exploring advanced topics such as: • Multi-cloud IaC security • Container infrastructure security • Secrets management in IaC • Compliance automation with policy as code
+
+The foundation you've built in this lab will serve you well as you continue to develop secure, automated infrastructure solutions.
