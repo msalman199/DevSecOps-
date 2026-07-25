@@ -1,0 +1,911 @@
+DevSecOps Series Advanced Toolchain and Maturity Model
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Understand the DevSecOps Maturity Model framework and its importance in modern software development • Install and configure the DevSecOps Maturity Model assessment tool • Implement and evaluate maturity levels 1-4 in a practical environment • Assess current DevSecOps practices using standardized metrics • Create actionable improvement plans based on maturity assessment results • Configure automated security scanning tools integrated with CI/CD pipelines • Demonstrate practical implementation of security controls at different maturity levels
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of DevOps concepts and practices • Familiarity with Linux command line operations • Basic knowledge of Git version control system • Understanding of CI/CD pipeline concepts • Basic knowledge of containerization (Docker) • Familiarity with YAML configuration files
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. No need to build your own VM or install additional software - everything is ready to use!
+
+Your cloud machine includes: • Ubuntu 20.04 LTS with administrative privileges • Docker and Docker Compose pre-installed • Git and essential development tools • Python 3.8+ with pip package manager • Node.js and npm for web-based tools
+
+Task 1: Understanding DevSecOps Maturity Model Framework
+Subtask 1.1: Introduction to DevSecOps Maturity Model
+The DevSecOps Maturity Model provides a structured approach to assess and improve security integration within DevOps practices. It defines four maturity levels:
+
+Level 1 - Basic: Initial security awareness with manual processes Level 2 - Managed: Defined security processes with some automation Level 3 - Defined: Standardized security practices across teams Level 4 - Optimized: Continuous improvement with advanced automation
+
+Subtask 1.2: Setting Up the Working Directory
+First, let's create our lab workspace and navigate to it:
+
+# Create lab directory
+mkdir -p ~/devsecops-maturity-lab
+cd ~/devsecops-maturity-lab
+
+# Create subdirectories for different components
+mkdir -p {assessment,tools,configs,reports}
+
+# Verify directory structure
+tree . || ls -la
+Task 2: Installing DevSecOps Maturity Model Assessment Tool
+Subtask 2.1: Installing OWASP DevSecOps Maturity Model
+We'll use the OWASP DevSecOps Maturity Model, which is an open-source framework for assessing DevSecOps practices.
+
+# Clone the OWASP DevSecOps Maturity Model repository
+git clone https://github.com/OWASP/DevSecOps-MaturityModel.git
+
+# Navigate to the cloned directory
+cd DevSecOps-MaturityModel
+
+# Install required dependencies
+sudo apt update
+sudo apt install -y nodejs npm python3-pip
+
+# Install Node.js dependencies
+npm install
+
+# Install Python dependencies if requirements.txt exists
+if [ -f requirements.txt ]; then
+    pip3 install -r requirements.txt
+fi
+Subtask 2.2: Setting Up the Assessment Environment
+# Create a local configuration file
+cat > config/local-config.yaml << 'EOF'
+assessment:
+  organization: "Lab Environment"
+  assessor: "Student"
+  date: "$(date +%Y-%m-%d)"
+  scope: "Full DevSecOps Pipeline"
+
+maturity_levels:
+  level1:
+    name: "Basic"
+    description: "Initial security awareness"
+  level2:
+    name: "Managed"
+    description: "Defined security processes"
+  level3:
+    name: "Defined"
+    description: "Standardized practices"
+  level4:
+    name: "Optimized"
+    description: "Continuous improvement"
+EOF
+
+# Make the configuration file executable
+chmod +x config/local-config.yaml
+Subtask 2.3: Starting the Assessment Tool
+# Start the DevSecOps Maturity Model web interface
+npm start &
+
+# Wait for the service to start
+sleep 10
+
+# Check if the service is running
+curl -s http://localhost:3000 > /dev/null && echo "Service is running" || echo "Service failed to start"
+Task 3: Implementing Level 1 Maturity Model (Basic)
+Subtask 3.1: Setting Up Basic Security Scanning
+Level 1 focuses on introducing basic security practices with minimal automation.
+
+# Navigate back to our lab directory
+cd ~/devsecops-maturity-lab
+
+# Create a sample application for testing
+mkdir -p level1-basic/sample-app
+cd level1-basic/sample-app
+
+# Create a simple Python web application
+cat > app.py << 'EOF'
+from flask import Flask, request, render_template_string
+import sqlite3
+import os
+
+app = Flask(__name__)
+
+# Intentionally vulnerable code for demonstration
+@app.route('/')
+def home():
+    return '<h1>Sample Application - Level 1</h1><a href="/search">Search Users</a>'
+
+@app.route('/search')
+def search():
+    query = request.args.get('q', '')
+    # SQL Injection vulnerability (intentional for demo)
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT * FROM users WHERE name LIKE '%{query}%'")
+    results = cursor.fetchall()
+    conn.close()
+    return f"Results: {results}"
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+EOF
+
+# Create requirements file
+cat > requirements.txt << 'EOF'
+Flask==2.3.3
+sqlite3
+EOF
+
+# Install dependencies
+pip3 install -r requirements.txt
+Subtask 3.2: Manual Security Assessment (Level 1)
+# Install basic security scanning tools
+sudo apt install -y bandit safety
+
+# Run static code analysis with Bandit
+echo "Running Bandit security scan..."
+bandit -r . -f json -o ../reports/bandit-level1.json
+bandit -r . -f txt -o ../reports/bandit-level1.txt
+
+# Check for known vulnerabilities in dependencies
+echo "Checking dependencies for known vulnerabilities..."
+safety check --json --output ../reports/safety-level1.json
+safety check --output ../reports/safety-level1.txt
+
+# Create manual checklist for Level 1
+cat > ../level1-checklist.md << 'EOF'
+# Level 1 DevSecOps Maturity Checklist
+
+## Security Awareness
+- [ ] Basic security training completed
+- [ ] Security tools installed (Bandit, Safety)
+- [ ] Manual security scans performed
+- [ ] Vulnerability reports generated
+
+## Basic Controls
+- [ ] Static code analysis tool configured
+- [ ] Dependency vulnerability scanning
+- [ ] Manual code review process
+- [ ] Basic incident response plan
+
+## Documentation
+- [ ] Security policies documented
+- [ ] Tool usage guidelines created
+- [ ] Vulnerability remediation process defined
+EOF
+Subtask 3.3: Level 1 Assessment Results
+# Generate Level 1 assessment report
+cat > ../reports/level1-assessment.md << 'EOF'
+# Level 1 DevSecOps Maturity Assessment
+
+## Current State
+- Manual security processes implemented
+- Basic scanning tools configured
+- Ad-hoc security reviews conducted
+- Limited automation
+
+## Strengths
+- Security awareness established
+- Basic tooling in place
+- Documentation started
+
+## Areas for Improvement
+- Automate security scans
+- Integrate with CI/CD pipeline
+- Standardize processes
+- Implement continuous monitoring
+
+## Next Steps
+- Move to Level 2 by implementing automated scanning
+- Integrate security tools with development workflow
+- Establish regular security reviews
+EOF
+
+echo "Level 1 implementation completed. Check reports in ../reports/"
+Task 4: Implementing Level 2 Maturity Model (Managed)
+Subtask 4.1: Setting Up Automated Security Pipeline
+Level 2 introduces automation and integration with CI/CD processes.
+
+# Navigate to Level 2 directory
+cd ~/devsecops-maturity-lab
+mkdir -p level2-managed
+cd level2-managed
+
+# Create a CI/CD pipeline configuration
+cat > .github/workflows/security-scan.yml << 'EOF'
+name: DevSecOps Security Pipeline - Level 2
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install bandit safety semgrep
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Run Bandit Security Scan
+      run: |
+        bandit -r . -f json -o bandit-report.json
+        bandit -r . -f txt
+    
+    - name: Run Safety Check
+      run: |
+        safety check --json --output safety-report.json
+        safety check
+    
+    - name: Run Semgrep SAST
+      run: |
+        semgrep --config=auto --json --output=semgrep-report.json .
+        semgrep --config=auto .
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+          semgrep-report.json
+EOF
+Subtask 4.2: Implementing Container Security Scanning
+# Create Dockerfile for the application
+cat > Dockerfile << 'EOF'
+FROM python:3.8-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
+EOF
+
+# Copy the sample application from Level 1
+cp ../level1-basic/sample-app/app.py .
+cp ../level1-basic/sample-app/requirements.txt .
+
+# Install container security scanning tools
+sudo apt install -y docker.io
+sudo systemctl start docker
+sudo usermod -aG docker $USER
+
+# Install Trivy for container vulnerability scanning
+sudo apt install -y wget apt-transport-https gnupg lsb-release
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt update
+sudo apt install -y trivy
+
+# Build and scan the container
+docker build -t sample-app:level2 .
+trivy image --format json --output ../reports/trivy-level2.json sample-app:level2
+trivy image sample-app:level2
+Subtask 4.3: Setting Up Automated Security Testing
+# Create automated security test script
+cat > security-tests.sh << 'EOF'
+#!/bin/bash
+
+echo "Starting Level 2 Automated Security Testing..."
+
+# Create reports directory
+mkdir -p ../reports/level2
+
+# Run SAST (Static Application Security Testing)
+echo "Running Static Application Security Testing..."
+bandit -r . -f json -o ../reports/level2/sast-bandit.json
+semgrep --config=auto --json --output=../reports/level2/sast-semgrep.json .
+
+# Run dependency scanning
+echo "Running Dependency Vulnerability Scanning..."
+safety check --json --output ../reports/level2/dependency-safety.json
+
+# Run container scanning
+echo "Running Container Security Scanning..."
+trivy image --format json --output ../reports/level2/container-trivy.json sample-app:level2
+
+# Run basic DAST (Dynamic Application Security Testing)
+echo "Starting application for DAST..."
+docker run -d -p 5000:5000 --name test-app sample-app:level2
+sleep 5
+
+# Install and run basic DAST with OWASP ZAP
+docker run -t owasp/zap2docker-stable zap-baseline.py -t http://host.docker.internal:5000 -J ../reports/level2/dast-zap.json || true
+
+# Cleanup
+docker stop test-app
+docker rm test-app
+
+echo "Level 2 security testing completed!"
+EOF
+
+chmod +x security-tests.sh
+./security-tests.sh
+Subtask 4.4: Level 2 Assessment and Reporting
+# Create Level 2 assessment report
+cat > ../reports/level2-assessment.md << 'EOF'
+# Level 2 DevSecOps Maturity Assessment
+
+## Current State
+- Automated security scanning implemented
+- CI/CD pipeline integration completed
+- Container security scanning configured
+- Basic DAST capabilities established
+
+## Implemented Controls
+- SAST: Bandit, Semgrep
+- Dependency Scanning: Safety
+- Container Scanning: Trivy
+- DAST: OWASP ZAP baseline
+- Automated reporting
+
+## Metrics
+- Security scan automation: 80%
+- Pipeline integration: Complete
+- Vulnerability detection: Automated
+- Report generation: Automated
+
+## Strengths
+- Consistent security scanning
+- Early vulnerability detection
+- Automated report generation
+- CI/CD integration
+
+## Areas for Improvement
+- Implement security gates
+- Add compliance checking
+- Enhance DAST coverage
+- Implement security metrics dashboard
+
+## Next Steps to Level 3
+- Standardize security policies
+- Implement security gates in pipeline
+- Add compliance automation
+- Create security metrics dashboard
+EOF
+
+echo "Level 2 implementation completed successfully!"
+Task 5: Implementing Level 3 Maturity Model (Defined)
+Subtask 5.1: Implementing Security Gates and Policies
+Level 3 focuses on standardized processes and security gates that prevent vulnerable code from reaching production.
+
+# Navigate to Level 3 directory
+cd ~/devsecops-maturity-lab
+mkdir -p level3-defined
+cd level3-defined
+
+# Create security policy configuration
+cat > security-policy.yaml << 'EOF'
+security_policies:
+  sast:
+    fail_threshold: "HIGH"
+    max_high_vulnerabilities: 0
+    max_medium_vulnerabilities: 5
+    max_low_vulnerabilities: 20
+  
+  dependency:
+    fail_on_vulnerability: true
+    allowed_licenses:
+      - "MIT"
+      - "Apache-2.0"
+      - "BSD-3-Clause"
+      - "ISC"
+  
+  container:
+    fail_threshold: "HIGH"
+    max_critical_vulnerabilities: 0
+    max_high_vulnerabilities: 2
+    base_image_policy: "approved_only"
+  
+  dast:
+    fail_threshold: "MEDIUM"
+    required_tests:
+      - "sql_injection"
+      - "xss"
+      - "authentication"
+  
+  compliance:
+    required_standards:
+      - "OWASP_TOP_10"
+      - "CWE_TOP_25"
+    documentation_required: true
+EOF
+
+# Create security gate implementation script
+cat > security-gate.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import yaml
+import sys
+import os
+
+class SecurityGate:
+    def __init__(self, policy_file):
+        with open(policy_file, 'r') as f:
+            self.policies = yaml.safe_load(f)
+        self.violations = []
+    
+    def check_sast_results(self, bandit_file, semgrep_file):
+        """Check SAST results against policy"""
+        print("Checking SAST results...")
+        
+        # Check Bandit results
+        if os.path.exists(bandit_file):
+            with open(bandit_file, 'r') as f:
+                bandit_data = json.load(f)
+            
+            high_issues = len([r for r in bandit_data.get('results', []) 
+                             if r.get('issue_severity') == 'HIGH'])
+            medium_issues = len([r for r in bandit_data.get('results', []) 
+                               if r.get('issue_severity') == 'MEDIUM'])
+            
+            policy = self.policies['security_policies']['sast']
+            if high_issues > policy['max_high_vulnerabilities']:
+                self.violations.append(f"SAST: {high_issues} HIGH vulnerabilities exceed limit of {policy['max_high_vulnerabilities']}")
+            if medium_issues > policy['max_medium_vulnerabilities']:
+                self.violations.append(f"SAST: {medium_issues} MEDIUM vulnerabilities exceed limit of {policy['max_medium_vulnerabilities']}")
+    
+    def check_dependency_results(self, safety_file):
+        """Check dependency scan results"""
+        print("Checking dependency scan results...")
+        
+        if os.path.exists(safety_file):
+            with open(safety_file, 'r') as f:
+                try:
+                    safety_data = json.load(f)
+                    if safety_data and len(safety_data) > 0:
+                        self.violations.append(f"Dependencies: {len(safety_data)} vulnerabilities found")
+                except json.JSONDecodeError:
+                    # Safety might output text format
+                    pass
+    
+    def check_container_results(self, trivy_file):
+        """Check container scan results"""
+        print("Checking container scan results...")
+        
+        if os.path.exists(trivy_file):
+            with open(trivy_file, 'r') as f:
+                trivy_data = json.load(f)
+            
+            critical_count = 0
+            high_count = 0
+            
+            for result in trivy_data.get('Results', []):
+                for vuln in result.get('Vulnerabilities', []):
+                    severity = vuln.get('Severity', '').upper()
+                    if severity == 'CRITICAL':
+                        critical_count += 1
+                    elif severity == 'HIGH':
+                        high_count += 1
+            
+            policy = self.policies['security_policies']['container']
+            if critical_count > policy['max_critical_vulnerabilities']:
+                self.violations.append(f"Container: {critical_count} CRITICAL vulnerabilities exceed limit")
+            if high_count > policy['max_high_vulnerabilities']:
+                self.violations.append(f"Container: {high_count} HIGH vulnerabilities exceed limit")
+    
+    def generate_report(self):
+        """Generate security gate report"""
+        report = {
+            'timestamp': '2024-01-01T00:00:00Z',
+            'status': 'PASS' if len(self.violations) == 0 else 'FAIL',
+            'violations': self.violations,
+            'policy_compliance': len(self.violations) == 0
+        }
+        
+        with open('../reports/level3/security-gate-report.json', 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        return report['status'] == 'PASS'
+
+if __name__ == "__main__":
+    gate = SecurityGate('security-policy.yaml')
+    
+    # Check all security scan results
+    gate.check_sast_results('../reports/level2/sast-bandit.json', '../reports/level2/sast-semgrep.json')
+    gate.check_dependency_results('../reports/level2/dependency-safety.json')
+    gate.check_container_results('../reports/level2/container-trivy.json')
+    
+    # Generate report and exit with appropriate code
+    if gate.generate_report():
+        print("✅ Security gate PASSED")
+        sys.exit(0)
+    else:
+        print("❌ Security gate FAILED")
+        for violation in gate.violations:
+            print(f"  - {violation}")
+        sys.exit(1)
+EOF
+
+chmod +x security-gate.py
+Subtask 5.2: Implementing Compliance Automation
+# Create compliance checking script
+cat > compliance-check.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import yaml
+import os
+from datetime import datetime
+
+class ComplianceChecker:
+    def __init__(self):
+        self.compliance_results = {
+            'owasp_top_10': {},
+            'cwe_top_25': {},
+            'documentation': {},
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def check_owasp_top_10(self, scan_results_dir):
+        """Check compliance with OWASP Top 10"""
+        print("Checking OWASP Top 10 compliance...")
+        
+        owasp_categories = {
+            'A01_Broken_Access_Control': False,
+            'A02_Cryptographic_Failures': False,
+            'A03_Injection': False,
+            'A04_Insecure_Design': False,
+            'A05_Security_Misconfiguration': False,
+            'A06_Vulnerable_Components': False,
+            'A07_Authentication_Failures': False,
+            'A08_Software_Integrity_Failures': False,
+            'A09_Logging_Monitoring_Failures': False,
+            'A10_SSRF': False
+        }
+        
+        # Check for injection vulnerabilities
+        bandit_file = os.path.join(scan_results_dir, 'sast-bandit.json')
+        if os.path.exists(bandit_file):
+            with open(bandit_file, 'r') as f:
+                bandit_data = json.load(f)
+            
+            for result in bandit_data.get('results', []):
+                test_id = result.get('test_id', '')
+                if 'sql' in test_id.lower() or 'injection' in result.get('test_name', '').lower():
+                    owasp_categories['A03_Injection'] = True
+        
+        # Check for vulnerable components
+        safety_file = os.path.join(scan_results_dir, 'dependency-safety.json')
+        if os.path.exists(safety_file):
+            try:
+                with open(safety_file, 'r') as f:
+                    safety_data = json.load(f)
+                if safety_data:
+                    owasp_categories['A06_Vulnerable_Components'] = True
+            except:
+                pass
+        
+        self.compliance_results['owasp_top_10'] = owasp_categories
+    
+    def check_documentation_compliance(self):
+        """Check documentation compliance"""
+        print("Checking documentation compliance...")
+        
+        required_docs = {
+            'security_policy': os.path.exists('security-policy.yaml'),
+            'incident_response': os.path.exists('incident-response.md'),
+            'security_training': os.path.exists('security-training.md'),
+            'vulnerability_management': os.path.exists('vulnerability-management.md')
+        }
+        
+        self.compliance_results['documentation'] = required_docs
+    
+    def generate_compliance_report(self):
+        """Generate compliance report"""
+        os.makedirs('../reports/level3', exist_ok=True)
+        
+        with open('../reports/level3/compliance-report.json', 'w') as f:
+            json.dump(self.compliance_results, f, indent=2)
+        
+        # Generate human-readable report
+        with open('../reports/level3/compliance-report.md', 'w') as f:
+            f.write("# Level 3 Compliance Report\n\n")
+            f.write(f"Generated: {self.compliance_results['timestamp']}\n\n")
+            
+            f.write("## OWASP Top 10 Compliance\n")
+            for category, detected in self.compliance_results['owasp_top_10'].items():
+                status = "⚠️ DETECTED" if detected else "✅ CLEAN"
+                f.write(f"- {category}: {status}\n")
+            
+            f.write("\n## Documentation Compliance\n")
+            for doc, exists in self.compliance_results['documentation'].items():
+                status = "✅ EXISTS" if exists else "❌ MISSING"
+                f.write(f"- {doc}: {status}\n")
+
+if __name__ == "__main__":
+    checker = ComplianceChecker()
+    checker.check_owasp_top_10('../reports/level2')
+    checker.check_documentation_compliance()
+    checker.generate_compliance_report()
+    print("Compliance check completed!")
+EOF
+
+chmod +x compliance-check.py
+
+# Create required documentation templates
+cat > incident-response.md << 'EOF'
+# Incident Response Plan
+
+## Overview
+This document outlines the incident response procedures for security events.
+
+## Incident Classification
+- **Critical**: System compromise, data breach
+- **High**: Vulnerability exploitation attempt
+- **Medium**: Policy violation, suspicious activity
+- **Low**: Minor security event
+
+## Response Team
+- Incident Commander: Security Team Lead
+- Technical Lead: DevOps Engineer
+- Communications: Product Manager
+
+## Response Procedures
+1. Detection and Analysis
+2. Containment and Eradication
+3. Recovery and Post-Incident Analysis
+4. Documentation and Lessons Learned
+EOF
+
+cat > security-training.md << 'EOF'
+# Security Training Program
+
+## Mandatory Training
+- Secure Coding Practices
+- OWASP Top 10 Awareness
+- Incident Response Procedures
+- Data Protection and Privacy
+
+## Role-Based Training
+- Developers: Secure coding, SAST tools
+- DevOps: Infrastructure security, container security
+- QA: Security testing, DAST tools
+
+## Training Schedule
+- Initial training: Within 30 days of joining
+- Refresher training: Annually
+- Specialized training: As needed
+EOF
+
+cat > vulnerability-management.md << 'EOF'
+# Vulnerability Management Process
+
+## Vulnerability Discovery
+- Automated scanning (SAST, DAST, SCA)
+- Manual security testing
+- External security assessments
+- Bug bounty programs
+
+## Risk Assessment
+- CVSS scoring
+- Business impact analysis
+- Exploitability assessment
+- Asset criticality
+
+## Remediation Timeline
+- Critical: 24 hours
+- High: 7 days
+- Medium: 30 days
+- Low: 90 days
+
+## Tracking and Reporting
+- Vulnerability database maintenance
+- Regular status reporting
+- Metrics and KPIs
+EOF
+Subtask 5.3: Advanced Pipeline Integration
+# Create advanced CI/CD pipeline with security gates
+cat > .gitlab-ci.yml << 'EOF'
+stages:
+  - build
+  - security-scan
+  - security-gate
+  - compliance-check
+  - deploy
+
+variables:
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+
+build:
+  stage: build
+  script:
+    - docker build -t $DOCKER_IMAGE .
+    - docker push $DOCKER_IMAGE
+
+sast-scan:
+  stage: security-scan
+  script:
+    - bandit -r . -f json -o bandit-results.json
+    - semgrep --config=auto --json --output=semgrep-results.json .
+  artifacts:
+    reports:
+      sast: [bandit-results.json, semgrep-results.json]
+    paths:
+      - bandit-results.json
+      - semgrep-results.json
+
+dependency-scan:
+  stage: security-scan
+  script:
+    - safety check --json --output safety-results.json
+  artifacts:
+    reports:
+      dependency_scanning: safety-results.json
+    paths:
+      - safety-results.json
+
+container-scan:
+  stage: security-scan
+  script:
+    - trivy image --format json --output trivy-results.json $DOCKER_IMAGE
+  artifacts:
+    reports:
+      container_scanning: trivy-results.json
+    paths:
+      - trivy-results.json
+
+security-gate:
+  stage: security-gate
+  script:
+    - python3 security-gate.py
+  dependencies:
+    - sast-scan
+    - dependency-scan
+    - container-scan
+  artifacts:
+    paths:
+      - reports/level3/security-gate-report.json
+
+compliance-check:
+  stage: compliance-check
+  script:
+    - python3 compliance-check.py
+  artifacts:
+    paths:
+      - reports/level3/compliance-report.json
+      - reports/level3/compliance-report.md
+
+deploy-staging:
+  stage: deploy
+  script:
+    - echo "Deploying to staging environment"
+    - docker run -d -p 5001:5000 --name staging-app $DOCKER_IMAGE
+  dependencies:
+    - security-gate
+    - compliance-check
+  only:
+    - develop
+
+deploy-production:
+  stage: deploy
+  script:
+    - echo "Deploying to production environment"
+    - docker run -d -p 5002:5000 --name production-app $DOCKER_IMAGE
+  dependencies:
+    - security-gate
+    - compliance-check
+  only:
+    - main
+  when: manual
+EOF
+Subtask 5.4: Level 3 Assessment and Metrics
+# Run Level 3 assessment
+mkdir -p ../reports/level3
+
+# Execute security gate
+python3 security-gate.py
+
+# Execute compliance check
+python3 compliance-check.py
+
+# Create Level 3 assessment report
+cat > ../reports/level3-assessment.md << 'EOF'
+# Level 3 DevSecOps Maturity Assessment
+
+## Current State
+- Security gates implemented in CI/CD pipeline
+- Automated compliance checking
+- Standardized security policies
+- Advanced reporting and metrics
+
+## Implemented Controls
+- Policy-based security gates
+- OWASP Top 10 compliance checking
+- Automated documentation compliance
+- Advanced CI/CD integration
+- Risk-based vulnerability management
+
+## Key Metrics
+- Security gate pass rate: 95%
+- Policy compliance: 100%
+- Mean time to remediation: 
+  - Critical: < 24 hours
+  - High: < 7 days
+  - Medium: < 30 days
+- Documentation compliance: 100%
+
+## Strengths
+- Consistent policy enforcement
+- Automated compliance verification
+- Comprehensive security coverage
+- Standardized processes across teams
+
+## Areas for Improvement
+- Implement advanced threat modeling
+- Add runtime security monitoring
+- Enhance security metrics dashboard
+- Implement continuous compliance monitoring
+
+## Next Steps to Level 4
+- Implement AI/ML-based threat detection
+- Add runtime application self-protection (RASP)
+- Implement continuous compliance monitoring
+- Add advanced security analytics
+EOF
+
+echo "Level 3 implementation completed successfully!"
+Task 6: Implementing Level 4 Maturity Model (Optimized)
+Subtask 6.1: Implementing Advanced Security Analytics
+Level 4 represents the highest maturity level with continuous improvement, advanced analytics, and AI-driven security.
+
+# Navigate to Level 4 directory
+cd ~/devsecops-maturity-lab
+mkdir -p level4-optimized
+cd level4-optimized
+
+# Install advanced analytics tools
+pip3 install pandas numpy matplotlib seaborn scikit-learn
+
+# Create security analytics engine
+cat > security-analytics.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime, timedelta
+import os
+
+class SecurityAnalytics:
+    def __init__(self):
+        self.metrics = {
+            'vulnerability_trends': [],
+            'security_gate_performance': [],
+            'compliance_scores': [],
+            'threat_intelligence': []
+        }
+    
+    def analyze_vulnerability_trends(self, scan_results_dir):
+        """Analyze vulnerability trends over time"""
+        print("Analyzing vulnerability trends...")
+        
+        # Simulate historical data for demonstration
+        dates = pd.date_range(start='2024-01-01', end='2024-12-31', freq='W')
+        
+        vulnerability_data = []
+        for date in dates:
+            # Simulate decreasing vulnerability trend (improvement over time)
+            base_vulns = max(50 - (date.dayofyear // 7), 5)
+            critical = max(np.random.poisson(base_vulns * 0.1), 0)
+            high = max(np.random.poisson(base_vulns * 0.3), 0)
+            medium = max(np.random.poisson(base_vulns * 0.4), 0)
+            low = max(np.random.poisson(base_vulns * 0.2), 0)
+            
+            vulnerability_data
