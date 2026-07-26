@@ -1,0 +1,38 @@
+#include <tunables/global>
+
+profile webapp-container flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  
+  # Allow network access
+  network inet tcp,
+  network inet udp,
+  
+  # Allow access to application files
+  /app/** r,
+  /usr/local/lib/python3.9/** r,
+  /usr/lib/python3.9/** r,
+  
+  # Allow execution of Python
+  /usr/local/bin/python ix,
+  /usr/bin/python3.9 ix,
+  
+  # Allow reading system files needed by Python
+  /etc/ld.so.cache r,
+  /etc/passwd r,
+  /etc/group r,
+  /proc/*/stat r,
+  /sys/fs/cgroup/** r,
+  
+  # Deny dangerous capabilities
+  deny capability sys_admin,
+  deny capability sys_module,
+  deny capability sys_rawio,
+  deny capability sys_ptrace,
+  
+  # Allow temporary file access
+  /tmp/** rw,
+  
+  # Allow logging
+  /dev/stdout w,
+  /dev/stderr w,
+}
