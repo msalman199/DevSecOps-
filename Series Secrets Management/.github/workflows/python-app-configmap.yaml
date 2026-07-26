@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: python-app-code
+data:
+  app.py: |
+    import os
+    import time
+    import json
+    
+    def load_secrets():
+        secrets_file = '/vault/secrets/database-config.txt'
+        if os.path.exists(secrets_file):
+            print("Loading secrets from Vault...")
+            with open(secrets_file, 'r') as f:
+                content = f.read()
+                print("Secrets loaded successfully!")
+                print("Secret file content (first 50 chars):", content[:50] + "...")
+                return True
+        else:
+            print("Secrets file not found!")
+            return False
+    
+    def main():
+        print("Python Application Starting...")
+        
+        while True:
+            if load_secrets():
+                print("Application running with secure secrets...")
+            else:
+                print("Application running without secrets (not secure)...")
+            
+            time.sleep(30)
+    
+    if __name__ == "__main__":
+        main()
