@@ -1,0 +1,5 @@
+
+[allowlist]
+description = "Allowlist for example tokens"
+regexes = ['''example''', '''EXAMPLE''']
+paths = ['''.*test.*''', '''.*demo.*''']
