@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  labels:
+    app: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+      annotations:
+        vault.hashicorp.com/agent-inject: 'true'
+        vault.hashicorp.com/role: 'myapp'
+        vault.hashicorp.com/agent-inject-secret-database-config.txt: 'secret/data/myapp/config'
+        vault.hashicorp.com/agent-inject-template-database-config.txt: |
+          {{- with secret "secret/data/myapp/config" -}}
+          DATABASE_PASSWORD="{{ .Data.data.database_password }}"
+          API_KEY="{{ .Data.data.api_key }}"
+          DATABASE_URL="{{ .Data.data.database_url }}"
+          {{- end -}}
+    spec:
+      serviceAccountName: myapp
+      containers:
+      - name: myapp
+        image: nginx:1.21
+        ports:
+        - containerPort: 80
+        command: ["/bin/sh"]
+        args:
+          - -c
+          - |
+            echo "Starting application..."
+            echo "Checking for injected secrets..."
+            if [ -f /vault/secrets/database-config.txt ]; then
+              echo "Secrets found! Content:"
+              cat /vault/secrets/database-config.txt
+            else
+              echo "No secrets found"
+            fi
+            echo "Starting nginx..."
+            nginx -g 'daemon off;'
+        volumeMounts:
+        - name: secrets
+          mountPath: /vault/secrets
+          readOnly: true
+      volumes:
+      - name: secrets
+        emptyDir: {}
