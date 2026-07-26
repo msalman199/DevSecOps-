@@ -1,0 +1,760 @@
+AI in DevSecOps
+Lab Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamentals of AI integration in DevSecOps workflows • Implement automated threat detection using open-source static analysis tools • Enhance CI/CD pipelines with predictive analytics capabilities • Build and train a basic AI model for vulnerability detection • Configure automated security scanning in development workflows • Analyze security metrics and implement feedback loops for continuous improvement
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of software development lifecycle (SDLC) • Familiarity with Git version control system • Basic knowledge of Python programming • Understanding of CI/CD concepts • Basic Linux command line experience • Familiarity with Docker containers (helpful but not required)
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines with all necessary tools installed. Simply click Start Lab to access your environment - no need to build your own VM or install software locally.
+
+Your cloud machine includes: • Python 3.8+ with pip • Git • Docker and Docker Compose • Node.js and npm • Various security scanning tools • Jupyter Notebook for AI model development
+
+Lab Task 1: Automate Threat Detection and Enhance CI/CD with Predictive Analytics
+Subtask 1.1: Setting Up the Development Environment
+Step 1: Access Your Cloud Machine
+
+Click the Start Lab button to access your pre-configured environment
+Open the terminal application
+Verify your environment by running:
+python3 --version
+git --version
+docker --version
+Step 2: Create Project Directory Structure
+
+mkdir -p ~/devsecops-ai-lab
+cd ~/devsecops-ai-lab
+mkdir -p {src,tests,security,ci-cd,models,data}
+Step 3: Initialize Git Repository
+
+git init
+git config --global user.name "DevSecOps Student"
+git config --global user.email "student@example.com"
+Subtask 1.2: Implementing Automated Threat Detection
+Step 1: Install Security Analysis Tools
+
+Since Codiga is a commercial tool, we'll use open-source alternatives that provide similar functionality:
+
+# Install Bandit for Python security analysis
+pip3 install bandit
+
+# Install Semgrep for multi-language static analysis
+pip3 install semgrep
+
+# Install Safety for dependency vulnerability scanning
+pip3 install safety
+
+# Install GitLeaks for secret detection
+wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+sudo mv gitleaks /usr/local/bin/
+Step 2: Create Sample Vulnerable Code
+
+Create a sample Python application with intentional security issues:
+
+cat > src/vulnerable_app.py << 'EOF'
+import os
+import sqlite3
+import hashlib
+from flask import Flask, request, render_template_string
+
+app = Flask(__name__)
+
+# Hardcoded secret (security issue)
+SECRET_KEY = "hardcoded-secret-key-123"
+DATABASE_PASSWORD = "admin123"
+
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.form['username']
+    password = request.form['password']
+    
+    # SQL Injection vulnerability
+    query = f"SELECT * FROM users WHERE username='{username}' AND password='{password}'"
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute(query)
+    result = cursor.fetchone()
+    
+    if result:
+        return "Login successful"
+    else:
+        return "Login failed"
+
+@app.route('/profile')
+def profile():
+    user_input = request.args.get('name', '')
+    # XSS vulnerability
+    template = f"<h1>Welcome {user_input}</h1>"
+    return render_template_string(template)
+
+@app.route('/file')
+def read_file():
+    filename = request.args.get('file', '')
+    # Path traversal vulnerability
+    with open(f"/var/www/uploads/{filename}", 'r') as f:
+        return f.read()
+
+if __name__ == '__main__':
+    # Debug mode in production (security issue)
+    app.run(debug=True, host='0.0.0.0')
+EOF
+Step 3: Create Security Scanning Scripts
+
+Create an automated security scanning script:
+
+cat > security/security_scan.py << 'EOF'
+#!/usr/bin/env python3
+import subprocess
+import json
+import sys
+import os
+from datetime import datetime
+
+class SecurityScanner:
+    def __init__(self, project_path):
+        self.project_path = project_path
+        self.results = {
+            'timestamp': datetime.now().isoformat(),
+            'scans': {}
+        }
+    
+    def run_bandit_scan(self):
+        """Run Bandit security scan for Python code"""
+        print("Running Bandit security scan...")
+        try:
+            result = subprocess.run([
+                'bandit', '-r', self.project_path, '-f', 'json'
+            ], capture_output=True, text=True)
+            
+            if result.stdout:
+                bandit_results = json.loads(result.stdout)
+                self.results['scans']['bandit'] = {
+                    'status': 'completed',
+                    'issues_found': len(bandit_results.get('results', [])),
+                    'details': bandit_results
+                }
+            else:
+                self.results['scans']['bandit'] = {
+                    'status': 'no_issues',
+                    'issues_found': 0
+                }
+        except Exception as e:
+            self.results['scans']['bandit'] = {
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    def run_semgrep_scan(self):
+        """Run Semgrep security scan"""
+        print("Running Semgrep security scan...")
+        try:
+            result = subprocess.run([
+                'semgrep', '--config=auto', '--json', self.project_path
+            ], capture_output=True, text=True)
+            
+            if result.stdout:
+                semgrep_results = json.loads(result.stdout)
+                self.results['scans']['semgrep'] = {
+                    'status': 'completed',
+                    'issues_found': len(semgrep_results.get('results', [])),
+                    'details': semgrep_results
+                }
+            else:
+                self.results['scans']['semgrep'] = {
+                    'status': 'no_issues',
+                    'issues_found': 0
+                }
+        except Exception as e:
+            self.results['scans']['semgrep'] = {
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    def run_gitleaks_scan(self):
+        """Run GitLeaks secret detection"""
+        print("Running GitLeaks secret detection...")
+        try:
+            result = subprocess.run([
+                'gitleaks', 'detect', '--source', self.project_path, '--report-format', 'json'
+            ], capture_output=True, text=True)
+            
+            if result.stdout:
+                try:
+                    gitleaks_results = json.loads(result.stdout)
+                    self.results['scans']['gitleaks'] = {
+                        'status': 'completed',
+                        'secrets_found': len(gitleaks_results) if isinstance(gitleaks_results, list) else 0,
+                        'details': gitleaks_results
+                    }
+                except json.JSONDecodeError:
+                    self.results['scans']['gitleaks'] = {
+                        'status': 'no_secrets',
+                        'secrets_found': 0
+                    }
+            else:
+                self.results['scans']['gitleaks'] = {
+                    'status': 'no_secrets',
+                    'secrets_found': 0
+                }
+        except Exception as e:
+            self.results['scans']['gitleaks'] = {
+                'status': 'error',
+                'error': str(e)
+            }
+    
+    def generate_report(self):
+        """Generate comprehensive security report"""
+        total_issues = 0
+        for scan_name, scan_result in self.results['scans'].items():
+            if scan_name == 'bandit' or scan_name == 'semgrep':
+                total_issues += scan_result.get('issues_found', 0)
+            elif scan_name == 'gitleaks':
+                total_issues += scan_result.get('secrets_found', 0)
+        
+        self.results['summary'] = {
+            'total_security_issues': total_issues,
+            'risk_level': self.calculate_risk_level(total_issues)
+        }
+        
+        # Save results to file
+        with open('security/security_report.json', 'w') as f:
+            json.dump(self.results, f, indent=2)
+        
+        return self.results
+    
+    def calculate_risk_level(self, total_issues):
+        """Calculate risk level based on number of issues"""
+        if total_issues == 0:
+            return 'LOW'
+        elif total_issues <= 5:
+            return 'MEDIUM'
+        else:
+            return 'HIGH'
+    
+    def run_all_scans(self):
+        """Run all security scans"""
+        self.run_bandit_scan()
+        self.run_semgrep_scan()
+        self.run_gitleaks_scan()
+        return self.generate_report()
+
+if __name__ == '__main__':
+    project_path = sys.argv[1] if len(sys.argv) > 1 else '.'
+    scanner = SecurityScanner(project_path)
+    results = scanner.run_all_scans()
+    
+    print("\n" + "="*50)
+    print("SECURITY SCAN RESULTS")
+    print("="*50)
+    print(f"Total Issues Found: {results['summary']['total_security_issues']}")
+    print(f"Risk Level: {results['summary']['risk_level']}")
+    print(f"Report saved to: security/security_report.json")
+EOF
+
+chmod +x security/security_scan.py
+Step 4: Run Security Scans
+
+cd ~/devsecops-ai-lab
+python3 security/security_scan.py .
+Subtask 1.3: Enhancing CI/CD with Predictive Analytics
+Step 1: Create CI/CD Pipeline Configuration
+
+Create a GitHub Actions workflow file:
+
+mkdir -p .github/workflows
+cat > .github/workflows/devsecops-pipeline.yml << 'EOF'
+name: DevSecOps Pipeline with AI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+    
+    - name: Install security tools
+      run: |
+        pip install bandit semgrep safety
+        wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+        tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+        sudo mv gitleaks /usr/local/bin/
+    
+    - name: Run security scans
+      run: |
+        python3 security/security_scan.py .
+    
+    - name: Upload security report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-report
+        path: security/security_report.json
+    
+    - name: Run predictive analytics
+      run: |
+        python3 ci-cd/predictive_analytics.py
+EOF
+Step 2: Create Predictive Analytics Module
+
+cat > ci-cd/predictive_analytics.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
+import os
+import pickle
+
+class DevSecOpsPredictiveAnalytics:
+    def __init__(self):
+        self.historical_data = []
+        self.model_path = 'models/vulnerability_predictor.pkl'
+        
+    def load_historical_data(self):
+        """Load historical security scan data"""
+        # Simulate historical data for demonstration
+        historical_data = [
+            {'date': '2024-01-01', 'vulnerabilities': 5, 'code_changes': 20, 'team_size': 3, 'deployment_frequency': 2},
+            {'date': '2024-01-02', 'vulnerabilities': 3, 'code_changes': 15, 'team_size': 3, 'deployment_frequency': 1},
+            {'date': '2024-01-03', 'vulnerabilities': 7, 'code_changes': 35, 'team_size': 4, 'deployment_frequency': 3},
+            {'date': '2024-01-04', 'vulnerabilities': 2, 'code_changes': 10, 'team_size': 3, 'deployment_frequency': 1},
+            {'date': '2024-01-05', 'vulnerabilities': 8, 'code_changes': 40, 'team_size': 5, 'deployment_frequency': 4},
+        ]
+        
+        self.historical_data = pd.DataFrame(historical_data)
+        self.historical_data['date'] = pd.to_datetime(self.historical_data['date'])
+        
+    def analyze_vulnerability_trends(self):
+        """Analyze vulnerability trends over time"""
+        if len(self.historical_data) == 0:
+            self.load_historical_data()
+            
+        # Calculate moving average
+        self.historical_data['vulnerability_trend'] = self.historical_data['vulnerabilities'].rolling(window=3).mean()
+        
+        # Calculate correlation between code changes and vulnerabilities
+        correlation = self.historical_data['code_changes'].corr(self.historical_data['vulnerabilities'])
+        
+        return {
+            'trend_analysis': {
+                'average_vulnerabilities': self.historical_data['vulnerabilities'].mean(),
+                'vulnerability_trend': 'increasing' if self.historical_data['vulnerabilities'].iloc[-1] > self.historical_data['vulnerabilities'].mean() else 'decreasing',
+                'code_vulnerability_correlation': correlation
+            }
+        }
+    
+    def predict_deployment_risk(self, code_changes, team_size, deployment_frequency):
+        """Predict deployment risk based on current metrics"""
+        # Simple risk calculation based on historical patterns
+        base_risk = 0.1
+        
+        # Risk increases with code changes
+        change_risk = min(code_changes * 0.01, 0.5)
+        
+        # Risk decreases with larger team (more reviews)
+        team_risk_reduction = max(0, (team_size - 2) * 0.05)
+        
+        # Risk increases with deployment frequency
+        frequency_risk = deployment_frequency * 0.05
+        
+        total_risk = base_risk + change_risk + frequency_risk - team_risk_reduction
+        total_risk = max(0, min(1, total_risk))  # Clamp between 0 and 1
+        
+        risk_level = 'LOW' if total_risk < 0.3 else 'MEDIUM' if total_risk < 0.7 else 'HIGH'
+        
+        return {
+            'risk_score': total_risk,
+            'risk_level': risk_level,
+            'recommendations': self.generate_recommendations(total_risk, code_changes, team_size)
+        }
+    
+    def generate_recommendations(self, risk_score, code_changes, team_size):
+        """Generate recommendations based on risk analysis"""
+        recommendations = []
+        
+        if risk_score > 0.7:
+            recommendations.append("HIGH RISK: Consider additional security reviews before deployment")
+            recommendations.append("Implement staged rollout strategy")
+            
+        if code_changes > 30:
+            recommendations.append("Large number of code changes detected - increase testing coverage")
+            
+        if team_size < 3:
+            recommendations.append("Small team size - consider peer reviews for all changes")
+            
+        if risk_score < 0.3:
+            recommendations.append("Low risk deployment - proceed with standard pipeline")
+            
+        return recommendations
+    
+    def generate_predictive_report(self):
+        """Generate comprehensive predictive analytics report"""
+        trend_analysis = self.analyze_vulnerability_trends()
+        
+        # Simulate current deployment metrics
+        current_metrics = {
+            'code_changes': 25,
+            'team_size': 3,
+            'deployment_frequency': 2
+        }
+        
+        risk_prediction = self.predict_deployment_risk(
+            current_metrics['code_changes'],
+            current_metrics['team_size'],
+            current_metrics['deployment_frequency']
+        )
+        
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'trend_analysis': trend_analysis,
+            'current_deployment_risk': risk_prediction,
+            'current_metrics': current_metrics
+        }
+        
+        # Save report
+        with open('ci-cd/predictive_report.json', 'w') as f:
+            json.dump(report, f, indent=2)
+            
+        return report
+    
+    def display_dashboard(self, report):
+        """Display predictive analytics dashboard"""
+        print("\n" + "="*60)
+        print("DEVSECOPS PREDICTIVE ANALYTICS DASHBOARD")
+        print("="*60)
+        
+        print(f"\nCURRENT DEPLOYMENT RISK: {report['current_deployment_risk']['risk_level']}")
+        print(f"Risk Score: {report['current_deployment_risk']['risk_score']:.2f}")
+        
+        print(f"\nCURRENT METRICS:")
+        print(f"  Code Changes: {report['current_metrics']['code_changes']}")
+        print(f"  Team Size: {report['current_metrics']['team_size']}")
+        print(f"  Deployment Frequency: {report['current_metrics']['deployment_frequency']}")
+        
+        print(f"\nTREND ANALYSIS:")
+        trend = report['trend_analysis']['trend_analysis']
+        print(f"  Average Vulnerabilities: {trend['average_vulnerabilities']:.1f}")
+        print(f"  Vulnerability Trend: {trend['vulnerability_trend']}")
+        print(f"  Code-Vulnerability Correlation: {trend['code_vulnerability_correlation']:.2f}")
+        
+        print(f"\nRECOMMENDATIONS:")
+        for rec in report['current_deployment_risk']['recommendations']:
+            print(f"  • {rec}")
+        
+        print("\n" + "="*60)
+
+if __name__ == '__main__':
+    analytics = DevSecOpsPredictiveAnalytics()
+    report = analytics.generate_predictive_report()
+    analytics.display_dashboard(report)
+EOF
+
+chmod +x ci-cd/predictive_analytics.py
+Step 3: Run Predictive Analytics
+
+cd ~/devsecops-ai-lab
+python3 ci-cd/predictive_analytics.py
+Lab Task 2: Build and Train AI Model for Vulnerability Detection
+Subtask 2.1: Preparing Training Data
+Step 1: Install Required Libraries
+
+pip3 install scikit-learn pandas numpy matplotlib seaborn jupyter
+Step 2: Create Training Dataset
+
+cat > data/create_training_data.py << 'EOF'
+#!/usr/bin/env python3
+import pandas as pd
+import numpy as np
+import json
+import random
+from datetime import datetime, timedelta
+
+class VulnerabilityDataGenerator:
+    def __init__(self):
+        self.vulnerability_types = [
+            'SQL_INJECTION', 'XSS', 'CSRF', 'BUFFER_OVERFLOW', 
+            'HARDCODED_SECRETS', 'INSECURE_CRYPTO', 'PATH_TRAVERSAL',
+            'COMMAND_INJECTION', 'LDAP_INJECTION', 'XXE'
+        ]
+        
+        self.code_patterns = {
+            'SQL_INJECTION': ['SELECT * FROM', 'INSERT INTO', 'UPDATE', 'DELETE FROM'],
+            'XSS': ['innerHTML', 'document.write', 'eval(', 'render_template_string'],
+            'HARDCODED_SECRETS': ['password =', 'api_key =', 'secret =', 'token ='],
+            'PATH_TRAVERSAL': ['open(', 'file_get_contents', 'readFile', 'include'],
+            'COMMAND_INJECTION': ['system(', 'exec(', 'shell_exec', 'subprocess.call']
+        }
+    
+    def generate_code_features(self, has_vulnerability=False, vuln_type=None):
+        """Generate code-based features"""
+        features = {
+            'lines_of_code': random.randint(10, 1000),
+            'cyclomatic_complexity': random.randint(1, 20),
+            'number_of_functions': random.randint(1, 50),
+            'number_of_classes': random.randint(0, 10),
+            'external_dependencies': random.randint(0, 20),
+            'user_input_handling': random.randint(0, 10),
+            'database_interactions': random.randint(0, 15),
+            'file_operations': random.randint(0, 8),
+            'network_operations': random.randint(0, 5),
+            'crypto_operations': random.randint(0, 3)
+        }
+        
+        if has_vulnerability and vuln_type:
+            # Adjust features to make vulnerability more likely
+            if vuln_type == 'SQL_INJECTION':
+                features['database_interactions'] = random.randint(5, 15)
+                features['user_input_handling'] = random.randint(3, 10)
+            elif vuln_type == 'XSS':
+                features['user_input_handling'] = random.randint(5, 10)
+            elif vuln_type == 'HARDCODED_SECRETS':
+                features['crypto_operations'] = random.randint(1, 3)
+        
+        return features
+    
+    def generate_metadata_features(self):
+        """Generate metadata-based features"""
+        return {
+            'author_experience_months': random.randint(1, 120),
+            'code_review_count': random.randint(0, 5),
+            'time_since_last_commit_hours': random.randint(1, 168),
+            'commit_size_changes': random.randint(1, 500),
+            'is_weekend_commit': random.choice([0, 1]),
+            'is_late_night_commit': random.choice([0, 1])
+        }
+    
+    def generate_training_sample(self, has_vulnerability=False):
+        """Generate a single training sample"""
+        vuln_type = None
+        if has_vulnerability:
+            vuln_type = random.choice(self.vulnerability_types)
+        
+        sample = {}
+        sample.update(self.generate_code_features(has_vulnerability, vuln_type))
+        sample.update(self.generate_metadata_features())
+        
+        # Target variables
+        sample['has_vulnerability'] = 1 if has_vulnerability else 0
+        sample['vulnerability_type'] = vuln_type if has_vulnerability else 'NONE'
+        sample['severity_score'] = random.uniform(0.1, 1.0) if has_vulnerability else 0.0
+        
+        return sample
+    
+    def generate_dataset(self, num_samples=1000, vulnerability_ratio=0.3):
+        """Generate complete training dataset"""
+        samples = []
+        num_vulnerable = int(num_samples * vulnerability_ratio)
+        num_clean = num_samples - num_vulnerable
+        
+        # Generate vulnerable samples
+        for _ in range(num_vulnerable):
+            samples.append(self.generate_training_sample(has_vulnerability=True))
+        
+        # Generate clean samples
+        for _ in range(num_clean):
+            samples.append(self.generate_training_sample(has_vulnerability=False))
+        
+        # Shuffle the dataset
+        random.shuffle(samples)
+        
+        return pd.DataFrame(samples)
+
+if __name__ == '__main__':
+    generator = VulnerabilityDataGenerator()
+    
+    # Generate training dataset
+    print("Generating training dataset...")
+    train_data = generator.generate_dataset(num_samples=2000, vulnerability_ratio=0.3)
+    train_data.to_csv('data/vulnerability_training_data.csv', index=False)
+    
+    # Generate test dataset
+    print("Generating test dataset...")
+    test_data = generator.generate_dataset(num_samples=500, vulnerability_ratio=0.3)
+    test_data.to_csv('data/vulnerability_test_data.csv', index=False)
+    
+    print(f"Training data shape: {train_data.shape}")
+    print(f"Test data shape: {test_data.shape}")
+    print(f"Vulnerability distribution in training: {train_data['has_vulnerability'].value_counts()}")
+    
+    # Display sample data
+    print("\nSample training data:")
+    print(train_data.head())
+EOF
+
+chmod +x data/create_training_data.py
+python3 data/create_training_data.py
+Subtask 2.2: Building the AI Model
+Step 1: Create Model Training Script
+
+cat > models/vulnerability_detector.py << 'EOF'
+#!/usr/bin/env python3
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, roc_curve
+from sklearn.pipeline import Pipeline
+import pickle
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
+
+class VulnerabilityDetector:
+    def __init__(self):
+        self.models = {}
+        self.best_model = None
+        self.scaler = StandardScaler()
+        self.label_encoder = LabelEncoder()
+        self.feature_names = []
+        
+    def load_data(self, train_path, test_path):
+        """Load training and test data"""
+        self.train_data = pd.read_csv(train_path)
+        self.test_data = pd.read_csv(test_path)
+        
+        print(f"Training data loaded: {self.train_data.shape}")
+        print(f"Test data loaded: {self.test_data.shape}")
+        
+        return self.train_data, self.test_data
+    
+    def preprocess_data(self):
+        """Preprocess the data for training"""
+        # Separate features and targets
+        feature_columns = [col for col in self.train_data.columns 
+                          if col not in ['has_vulnerability', 'vulnerability_type', 'severity_score']]
+        
+        self.feature_names = feature_columns
+        
+        # Prepare training data
+        X_train = self.train_data[feature_columns]
+        y_train = self.train_data['has_vulnerability']
+        
+        # Prepare test data
+        X_test = self.test_data[feature_columns]
+        y_test = self.test_data['has_vulnerability']
+        
+        # Scale features
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+        
+        return X_train_scaled, X_test_scaled, y_train, y_test
+    
+    def train_models(self, X_train, y_train):
+        """Train multiple models and compare performance"""
+        models_to_train = {
+            'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42),
+            'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, random_state=42),
+            'Logistic Regression': LogisticRegression(random_state=42, max_iter=1000)
+        }
+        
+        print("Training models...")
+        
+        for name, model in models_to_train.items():
+            print(f"\nTraining {name}...")
+            
+            # Cross-validation
+            cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='roc_auc')
+            
+            # Train on full dataset
+            model.fit(X_train, y_train)
+            
+            self.models[name] = {
+                'model': model,
+                'cv_scores': cv_scores,
+                'mean_cv_score': cv_scores.mean(),
+                'std_cv_score': cv_scores.std()
+            }
+            
+            print(f"Cross-validation AUC: {cv_scores.mean():.3f} (+/- {cv_scores.std() * 2:.3f})")
+    
+    def evaluate_models(self, X_test, y_test):
+        """Evaluate all trained models"""
+        print("\n" + "="*50)
+        print("MODEL EVALUATION RESULTS")
+        print("="*50)
+        
+        best_score = 0
+        best_model_name = None
+        
+        for name, model_info in self.models.items():
+            model = model_info['model']
+            
+            # Predictions
+            y_pred = model.predict(X_test)
+            y_pred_proba = model.predict_proba(X_test)[:, 1]
+            
+            # Metrics
+            auc_score = roc_auc_score(y_test, y_pred_proba)
+            
+            print(f"\n{name}:")
+            print(f"  AUC Score: {auc_score:.3f}")
+            print(f"  CV Score: {model_info['mean_cv_score']:.3f}")
+            
+            # Classification report
+            print("  Classification Report:")
+            report = classification_report(y_test, y_pred, output_dict=True)
+            print(f"    Precision: {report['1']['precision']:.3f}")
+            print(f"    Recall: {report['1']['recall']:.3f}")
+            print(f"    F1-Score: {report['1']['f1-score']:.3f}")
+            
+            # Update best model
+            if auc_score > best_score:
+                best_score = auc_score
+                best_model_name = name
+                self.best_model = model
+        
+        print(f"\nBest Model: {best_model_name} (AUC: {best_score:.3f})")
+        return best_model_name, best_score
+    
+    def analyze_feature_importance(self):
+        """Analyze feature importance for the best model"""
+        if self.best_model is None:
+            print("No model trained yet!")
+            return
+        
+        if hasattr(self.best_model, 'feature_importances_'):
+            importances = self.best_model.feature_importances_
+            feature_importance = pd.DataFrame({
+                'feature': self.feature_names,
+                'importance': importances
+            }).sort_values('importance', ascending=False)
+            
+            print("\n" + "="*40)
+            print("TOP 10 MOST IMPORTANT FEATURES")
+            print("="*40)
+            for idx, row in feature_importance.head(10).iterrows():
+                print(f"{row['feature']}: {row['importance']:.3f}")
+            
+            return feature_importance
+        else:
+            print("Feature importance not available for this model type")
+            return None
+    
+    def save_model(self, model_path='models/vulnerability_detector.pkl'):
+        """Save the trained model"""
+        if self.best_model is None:
+            print("No model to save!")
+            return
+        
+        model_package = {
+            'model': self.best_model,
+            'scaler': self
