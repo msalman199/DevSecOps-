@@ -1,0 +1,24 @@
+#!/bin/bash
+
+echo "Running security checks before commit..."
+
+# Run Bandit security scan
+echo "Running Bandit security scan..."
+bandit -r . -f txt
+
+if [ $? -ne 0 ]; then
+    echo "Security issues found! Please fix before committing."
+    exit 1
+fi
+
+# Run dependency check
+echo "Running dependency security check..."
+safety check
+
+if [ $? -ne 0 ]; then
+    echo "Vulnerable dependencies found! Please update before committing."
+    exit 1
+fi
+
+echo "Security checks passed!"
+exit 0
