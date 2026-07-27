@@ -1,0 +1,989 @@
+DevSecOps Culture and Activities - Incident Response Planning
+Lab Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamental principles of DevSecOps culture and incident response • Create a comprehensive incident response plan following industry best practices • Develop a detailed incident response playbook with actionable procedures • Implement security-first thinking in development and operations workflows • Establish communication protocols and escalation procedures for security incidents • Document and structure incident response processes for team collaboration
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of software development lifecycle (SDLC) • Familiarity with Linux command line operations • General knowledge of cybersecurity concepts • Understanding of team collaboration tools and processes • Basic knowledge of documentation formats (Markdown, YAML)
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment - no need to build your own VM or install additional software.
+
+Your lab environment includes: • Ubuntu 22.04 LTS with necessary tools pre-installed • Text editors (nano, vim) • Git for version control • YAML and Markdown processors • Sample templates and documentation tools
+
+Task 1: Create a Complete Incident Response Plan
+Subtask 1.1: Understanding Incident Response Framework
+First, let's establish the foundation of incident response in a DevSecOps environment.
+
+Access your lab environment and open a terminal
+
+Create the project directory structure:
+
+mkdir -p ~/devsecops-lab/incident-response
+cd ~/devsecops-lab/incident-response
+mkdir -p {plans,playbooks,templates,documentation}
+Create the main incident response plan document:
+nano plans/incident-response-plan.md
+Add the following comprehensive incident response plan content:
+# DevSecOps Incident Response Plan
+
+## 1. Executive Summary
+
+This Incident Response Plan (IRP) establishes procedures for identifying, responding to, and recovering from security incidents within our DevSecOps environment. This plan ensures rapid response, minimal business impact, and continuous improvement of security postures.
+
+## 2. Incident Response Team Structure
+
+### 2.1 Core Team Roles
+
+**Incident Commander (IC)**
+- Overall incident coordination
+- Decision-making authority
+- External communication lead
+- Contact: [Primary] [Secondary]
+
+**Security Lead**
+- Technical security analysis
+- Threat assessment
+- Forensic coordination
+- Contact: [Primary] [Secondary]
+
+**Development Lead**
+- Code analysis and remediation
+- Application security assessment
+- Development team coordination
+- Contact: [Primary] [Secondary]
+
+**Operations Lead**
+- Infrastructure management
+- System recovery coordination
+- Performance monitoring
+- Contact: [Primary] [Secondary]
+
+**Communications Lead**
+- Internal stakeholder updates
+- Customer communication
+- Media relations (if required)
+- Contact: [Primary] [Secondary]
+
+## 3. Incident Classification
+
+### 3.1 Severity Levels
+
+**Critical (P1)**
+- Complete system compromise
+- Data breach with PII/PHI exposure
+- Production system completely down
+- Response Time: 15 minutes
+- Resolution Target: 4 hours
+
+**High (P2)**
+- Partial system compromise
+- Suspected data breach
+- Major functionality impaired
+- Response Time: 30 minutes
+- Resolution Target: 8 hours
+
+**Medium (P3)**
+- Security policy violations
+- Minor system vulnerabilities
+- Limited functionality impact
+- Response Time: 2 hours
+- Resolution Target: 24 hours
+
+**Low (P4)**
+- Security awareness issues
+- Non-critical vulnerabilities
+- Minimal business impact
+- Response Time: 8 hours
+- Resolution Target: 72 hours
+
+## 4. Incident Response Phases
+
+### 4.1 Preparation
+- Maintain incident response tools and procedures
+- Regular team training and simulations
+- Establish communication channels
+- Document system baselines
+
+### 4.2 Identification
+- Monitor security alerts and logs
+- Validate incident occurrence
+- Initial impact assessment
+- Incident classification
+
+### 4.3 Containment
+- Short-term containment actions
+- System isolation if necessary
+- Evidence preservation
+- Long-term containment strategy
+
+### 4.4 Eradication
+- Remove threat from environment
+- Identify and fix vulnerabilities
+- Update security controls
+- System hardening
+
+### 4.5 Recovery
+- Restore systems to normal operation
+- Implement additional monitoring
+- Validate system integrity
+- Return to normal operations
+
+### 4.6 Lessons Learned
+- Post-incident review meeting
+- Document lessons learned
+- Update procedures and tools
+- Share knowledge with team
+
+## 5. Communication Procedures
+
+### 5.1 Internal Communication
+- Incident Commander notifies executive team within 30 minutes
+- Regular status updates every 2 hours during active incidents
+- All-clear notification when incident is resolved
+
+### 5.2 External Communication
+- Customer notification within 4 hours for P1/P2 incidents
+- Regulatory notification as required by law
+- Media communication through designated spokesperson only
+
+## 6. Tools and Resources
+
+### 6.1 Communication Tools
+- Primary: Slack #incident-response channel
+- Secondary: Conference bridge [phone number]
+- Emergency: Mobile phone contact list
+
+### 6.2 Technical Tools
+- SIEM: Security Information and Event Management system
+- Log Analysis: ELK Stack (Elasticsearch, Logstash, Kibana)
+- Forensics: SANS SIFT Workstation
+- Documentation: Incident tracking system
+
+## 7. Legal and Regulatory Requirements
+
+### 7.1 Data Breach Notification
+- GDPR: 72 hours to supervisory authority
+- State laws: Varies by jurisdiction
+- Industry regulations: As applicable
+
+### 7.2 Evidence Handling
+- Chain of custody procedures
+- Legal hold requirements
+- Forensic imaging standards
+
+## 8. Training and Awareness
+
+### 8.1 Regular Training
+- Quarterly incident response drills
+- Annual plan review and updates
+- New team member onboarding
+
+### 8.2 Awareness Programs
+- Security awareness training
+- Incident reporting procedures
+- Escalation path communication
+
+## 9. Plan Maintenance
+
+### 9.1 Review Schedule
+- Monthly: Contact information updates
+- Quarterly: Procedure review
+- Annually: Complete plan revision
+
+### 9.2 Version Control
+- All changes tracked in version control
+- Approval required for major changes
+- Distribution of updated versions
+
+## 10. Appendices
+
+### Appendix A: Contact Information
+[Detailed contact list with primary and backup contacts]
+
+### Appendix B: System Inventory
+[Critical systems and their owners]
+
+### Appendix C: Network Diagrams
+[Current network topology and security zones]
+
+### Appendix D: Legal Contacts
+[Legal counsel and regulatory contacts]
+Save the file by pressing Ctrl+X, then Y, then Enter
+Subtask 1.2: Create Supporting Documentation Templates
+Create an incident classification template:
+nano templates/incident-classification-template.yaml
+Add the classification template content:
+# Incident Classification Template
+incident_id: "INC-YYYY-MMDD-###"
+date_reported: "YYYY-MM-DD HH:MM:SS UTC"
+reported_by: ""
+incident_commander: ""
+
+# Classification
+severity: "" # Critical, High, Medium, Low
+category: "" # Security, Availability, Performance, Data
+subcategory: ""
+affected_systems: []
+business_impact: ""
+
+# Initial Assessment
+description: ""
+potential_causes: []
+initial_containment_actions: []
+estimated_resolution_time: ""
+
+# Stakeholders
+technical_lead: ""
+business_owner: ""
+external_parties_notified: []
+
+# Status Tracking
+current_status: "Open" # Open, In Progress, Resolved, Closed
+next_update_due: "YYYY-MM-DD HH:MM:SS UTC"
+resolution_summary: ""
+lessons_learned: []
+
+# Metrics
+time_to_detection: ""
+time_to_response: ""
+time_to_containment: ""
+time_to_resolution: ""
+Save the file and create a communication template:
+nano templates/communication-template.md
+Add the communication template:
+# Incident Communication Template
+
+## Initial Notification
+
+**Subject**: [SEVERITY] Security Incident - [BRIEF DESCRIPTION]
+
+**Incident ID**: INC-YYYY-MMDD-###
+**Severity**: [Critical/High/Medium/Low]
+**Status**: [Open/In Progress/Resolved]
+**Incident Commander**: [Name]
+**Next Update**: [Time]
+
+### Summary
+[Brief description of the incident]
+
+### Impact
+- **Systems Affected**: [List systems]
+- **Business Impact**: [Description]
+- **Customer Impact**: [Yes/No - Description]
+
+### Current Actions
+- [Action 1]
+- [Action 2]
+- [Action 3]
+
+### Next Steps
+- [Next step 1]
+- [Next step 2]
+
+---
+
+## Status Update Template
+
+**Subject**: [UPDATE] [SEVERITY] Security Incident - [BRIEF DESCRIPTION]
+
+**Incident ID**: INC-YYYY-MMDD-###
+**Status**: [Current Status]
+**Time Since Last Update**: [Duration]
+**Next Update**: [Time]
+
+### Progress Since Last Update
+- [Progress item 1]
+- [Progress item 2]
+
+### Current Status
+[Detailed status description]
+
+### Ongoing Actions
+- [Action 1 - Owner - ETA]
+- [Action 2 - Owner - ETA]
+
+### Blockers/Issues
+- [Issue 1 - Impact]
+- [Issue 2 - Impact]
+
+---
+
+## Resolution Notification
+
+**Subject**: [RESOLVED] Security Incident - [BRIEF DESCRIPTION]
+
+**Incident ID**: INC-YYYY-MMDD-###
+**Status**: Resolved
+**Resolution Time**: [Total time]
+**Post-Incident Review**: [Scheduled date/time]
+
+### Resolution Summary
+[Description of how the incident was resolved]
+
+### Root Cause
+[Root cause analysis]
+
+### Preventive Measures
+- [Measure 1]
+- [Measure 2]
+
+### Monitoring
+[Ongoing monitoring measures]
+Task 2: Create a Complete Incident Response Playbook
+Subtask 2.1: Develop Specific Response Playbooks
+Create the main playbook directory structure:
+cd ~/devsecops-lab/incident-response/playbooks
+mkdir -p {security-breach,ddos-attack,malware-infection,data-leak,insider-threat}
+Create a comprehensive security breach playbook:
+nano security-breach/security-breach-playbook.md
+Add the detailed security breach playbook content:
+# Security Breach Response Playbook
+
+## Playbook Overview
+
+**Purpose**: Respond to confirmed or suspected security breaches
+**Scope**: All systems and data within the organization
+**Trigger**: Security alert, anomalous activity, or breach notification
+**Owner**: Security Team Lead
+
+## Pre-Incident Preparation
+
+### Required Tools
+- [ ] Access to SIEM dashboard
+- [ ] Forensic imaging tools ready
+- [ ] Communication channels established
+- [ ] Legal contacts available
+- [ ] Backup systems verified
+
+### Team Assembly
+- [ ] Incident Commander assigned
+- [ ] Security Lead notified
+- [ ] Development Lead on standby
+- [ ] Operations Lead available
+- [ ] Communications Lead ready
+
+## Response Procedures
+
+### Phase 1: Initial Response (0-15 minutes)
+
+#### Step 1: Incident Verification
+```bash
+# Check system logs for suspicious activity
+sudo tail -f /var/log/auth.log
+sudo tail -f /var/log/syslog
+
+# Check network connections
+netstat -tulpn | grep LISTEN
+ss -tulpn | grep LISTEN
+
+# Check running processes
+ps aux | grep -v "^\[" | sort
+Actions:
+
+ Confirm incident occurrence
+ Document initial findings
+ Assess immediate threat level
+ Notify Incident Commander
+Step 2: Initial Containment
+# If system compromise suspected, isolate the system
+# Block suspicious IP addresses
+sudo iptables -A INPUT -s [SUSPICIOUS_IP] -j DROP
+
+# Disable compromised user accounts
+sudo usermod -L [USERNAME]
+
+# Stop suspicious processes
+sudo kill -9 [PID]
+Actions:
+
+ Isolate affected systems
+ Preserve evidence
+ Block malicious traffic
+ Document all actions taken
+Phase 2: Investigation and Analysis (15 minutes - 2 hours)
+Step 3: Evidence Collection
+# Create forensic image of affected system
+sudo dd if=/dev/sda of=/mnt/forensics/system-image.dd bs=4096
+
+# Collect memory dump
+sudo dd if=/dev/mem of=/mnt/forensics/memory-dump.dd
+
+# Collect network traffic
+sudo tcpdump -i eth0 -w /mnt/forensics/network-capture.pcap
+
+# Collect system information
+sudo lshw > /mnt/forensics/hardware-info.txt
+sudo ps aux > /mnt/forensics/process-list.txt
+sudo netstat -tulpn > /mnt/forensics/network-connections.txt
+Actions:
+
+ Create forensic images
+ Collect volatile data
+ Document system state
+ Preserve log files
+ Maintain chain of custody
+Step 4: Threat Analysis
+# Analyze log files for indicators of compromise
+grep -i "failed\|error\|unauthorized" /var/log/auth.log
+grep -i "attack\|intrusion\|malware" /var/log/syslog
+
+# Check for unusual file modifications
+find /etc -type f -mtime -1 -ls
+find /var/www -type f -mtime -1 -ls
+
+# Analyze network traffic
+tcpdump -r network-capture.pcap | grep -i "suspicious_pattern"
+Actions:
+
+ Identify attack vectors
+ Determine scope of compromise
+ Assess data exposure risk
+ Identify affected systems
+ Document findings
+Phase 3: Containment and Eradication (2-8 hours)
+Step 5: Extended Containment
+# Update firewall rules
+sudo iptables -A INPUT -s [MALICIOUS_NETWORK] -j DROP
+sudo iptables-save > /etc/iptables/rules.v4
+
+# Patch vulnerable systems
+sudo apt update && sudo apt upgrade -y
+
+# Reset compromised passwords
+sudo passwd [USERNAME]
+
+# Revoke and reissue certificates if needed
+sudo openssl req -new -x509 -days 365 -nodes -out cert.pem -keyout key.pem
+Actions:
+
+ Implement additional security controls
+ Patch vulnerabilities
+ Reset credentials
+ Update security configurations
+ Monitor for persistence
+Step 6: Eradication
+# Remove malware/backdoors
+sudo find / -name "*.suspicious" -delete
+sudo crontab -l | grep -v "malicious_command" | crontab -
+
+# Clean infected files
+sudo clamscan -r --remove /home/
+sudo rkhunter --check --sk
+
+# Rebuild compromised systems if necessary
+# (This would involve system reinstallation procedures)
+Actions:
+
+ Remove malicious code
+ Clean infected files
+ Rebuild systems if necessary
+ Verify system integrity
+ Update security tools
+Phase 4: Recovery (8-24 hours)
+Step 7: System Recovery
+# Restore from clean backups
+sudo rsync -av /backup/clean-data/ /var/www/html/
+
+# Verify system integrity
+sudo aide --check
+sudo tripwire --check
+
+# Test system functionality
+curl -I http://localhost
+systemctl status apache2
+Actions:
+
+ Restore systems from clean backups
+ Verify data integrity
+ Test system functionality
+ Implement additional monitoring
+ Gradual return to normal operations
+Step 8: Enhanced Monitoring
+# Set up additional logging
+echo "*.* /var/log/security-enhanced.log" >> /etc/rsyslog.conf
+sudo systemctl restart rsyslog
+
+# Configure real-time monitoring
+sudo tail -f /var/log/security-enhanced.log | grep -i "suspicious"
+
+# Set up automated alerts
+echo "*/5 * * * * root /usr/local/bin/security-check.sh" >> /etc/crontab
+Actions:
+
+ Implement enhanced logging
+ Set up real-time monitoring
+ Configure automated alerts
+ Establish baseline metrics
+ Document new monitoring procedures
+Phase 5: Post-Incident Activities (24-72 hours)
+Step 9: Documentation and Reporting
+# Generate incident report
+cat > incident-report.md << EOF
+# Security Breach Incident Report
+
+## Incident Summary
+- **Incident ID**: INC-$(date +%Y%m%d)-001
+- **Date/Time**: $(date)
+- **Duration**: [DURATION]
+- **Severity**: [SEVERITY]
+
+## Timeline of Events
+[Detailed timeline]
+
+## Root Cause Analysis
+[Analysis findings]
+
+## Impact Assessment
+[Business and technical impact]
+
+## Response Actions
+[Actions taken during response]
+
+## Lessons Learned
+[Key takeaways]
+
+## Recommendations
+[Preventive measures]
+EOF
+Actions:
+
+ Complete incident documentation
+ Conduct post-incident review
+ Update response procedures
+ Share lessons learned
+ Implement preventive measures
+Escalation Procedures
+Internal Escalation
+Level 1: Security Team Lead (0-15 minutes)
+Level 2: IT Director (15-30 minutes)
+Level 3: CISO/CTO (30-60 minutes)
+Level 4: Executive Team (1-2 hours)
+External Escalation
+Law Enforcement: For criminal activity
+Legal Counsel: For regulatory compliance
+Customers: For data exposure
+Regulators: As required by law
+Success Criteria
+ Threat contained within target timeframe
+ No additional systems compromised
+ Data integrity maintained
+ Business operations restored
+ Lessons learned documented
+ Preventive measures implemented
+Playbook Maintenance
+Review Frequency: Quarterly
+Update Triggers: After each incident, technology changes
+Approval Required: Security Team Lead, IT Director
+Distribution: All incident response team members
+
+### Subtask 2.2: Create Additional Specialized Playbooks
+
+1. **Create a DDoS attack response playbook**:
+```bash
+nano ddos-attack/ddos-response-playbook.md
+Add the DDoS response playbook:
+# DDoS Attack Response Playbook
+
+## Playbook Overview
+
+**Purpose**: Respond to Distributed Denial of Service attacks
+**Scope**: Network infrastructure and web services
+**Trigger**: Service degradation, traffic anomalies, monitoring alerts
+**Owner**: Operations Team Lead
+
+## Detection and Initial Response
+
+### Step 1: Confirm DDoS Attack
+```bash
+# Check current connections
+netstat -an | grep :80 | wc -l
+ss -tuln | grep :80 | wc -l
+
+# Monitor traffic patterns
+sudo iftop -i eth0
+sudo nethogs eth0
+
+# Check system load
+uptime
+top -n 1 | head -5
+Step 2: Immediate Mitigation
+# Implement rate limiting
+sudo iptables -A INPUT -p tcp --dport 80 -m limit --limit 25/minute --limit-burst 100 -j ACCEPT
+
+# Block suspicious source networks
+sudo iptables -A INPUT -s [ATTACKING_NETWORK] -j DROP
+
+# Enable SYN flood protection
+echo 1 > /proc/sys/net/ipv4/tcp_syncookies
+Step 3: Traffic Analysis
+# Analyze traffic patterns
+sudo tcpdump -i eth0 -c 1000 -w ddos-traffic.pcap
+sudo tshark -r ddos-traffic.pcap -q -z conv,ip
+
+# Identify attack sources
+sudo netstat -ntu | awk '{print $5}' | cut -d: -f1 | sort | uniq -c | sort -n
+Response Actions
+Immediate Actions (0-30 minutes)
+ Confirm attack is occurring
+ Implement basic rate limiting
+ Contact ISP/CDN provider
+ Notify incident response team
+ Begin traffic analysis
+Short-term Actions (30 minutes - 2 hours)
+ Implement advanced filtering
+ Scale infrastructure if possible
+ Coordinate with upstream providers
+ Monitor attack evolution
+ Document attack characteristics
+Long-term Actions (2+ hours)
+ Implement permanent protections
+ Review and update DDoS defenses
+ Conduct post-attack analysis
+ Update response procedures
+ Plan capacity improvements
+
+3. **Create a malware infection playbook**:
+```bash
+nano malware-infection/malware-response-playbook.md
+Add the malware response playbook:
+# Malware Infection Response Playbook
+
+## Playbook Overview
+
+**Purpose**: Respond to malware infections and suspicious software
+**Scope**: All systems and endpoints
+**Trigger**: Antivirus alerts, suspicious behavior, performance issues
+**Owner**: Security Team Lead
+
+## Detection and Analysis
+
+### Step 1: Isolate Infected System
+```bash
+# Disconnect from network (if safe to do so)
+sudo ifconfig eth0 down
+
+# Or implement network isolation
+sudo iptables -A OUTPUT -j DROP
+sudo iptables -A INPUT -j DROP
+sudo iptables -I INPUT 1 -i lo -j ACCEPT
+sudo iptables -I OUTPUT 1 -o lo -j ACCEPT
+Step 2: Malware Analysis
+# Scan for malware
+sudo clamscan -r --infected --remove /home/
+sudo rkhunter --check --sk
+sudo chkrootkit
+
+# Check running processes
+ps aux | grep -v "^\[" | sort
+sudo lsof -i -P -n | grep LISTEN
+
+# Check for suspicious files
+find /tmp -type f -executable
+find /var/tmp -type f -executable
+find /dev/shm -type f -executable
+Step 3: Evidence Collection
+# Create system snapshot
+sudo dd if=/dev/sda of=/mnt/forensics/infected-system.dd bs=4096
+
+# Collect malware samples
+mkdir -p /mnt/forensics/malware-samples
+cp [MALWARE_FILE] /mnt/forensics/malware-samples/
+
+# Document system state
+sudo ps aux > /mnt/forensics/process-list.txt
+sudo lsof > /mnt/forensics/open-files.txt
+sudo netstat -tulpn > /mnt/forensics/network-connections.txt
+Eradication and Recovery
+Step 4: Remove Malware
+# Remove identified malware
+sudo rm -f [MALWARE_FILES]
+
+# Clean registry/configuration files
+sudo sed -i '/malicious_entry/d' /etc/crontab
+sudo systemctl disable malicious-service
+
+# Update and run security tools
+sudo apt update
+sudo apt install -y clamav rkhunter chkrootkit
+sudo freshclam
+sudo clamscan -r --remove /
+Step 5: System Hardening
+# Update all software
+sudo apt update && sudo apt upgrade -y
+
+# Configure automatic updates
+sudo apt install -y unattended-upgrades
+sudo dpkg-reconfigure -plow unattended-upgrades
+
+# Implement additional security measures
+sudo ufw enable
+sudo fail2ban-client start
+Prevention Measures
+ Install and configure endpoint protection
+ Implement application whitelisting
+ Regular security updates
+ User security training
+ Email security controls
+ Web filtering
+ Backup and recovery procedures
+
+### Subtask 2.3: Create Playbook Management System
+
+1. **Create a playbook index and management script**:
+```bash
+nano ../playbook-manager.sh
+Add the playbook management script:
+#!/bin/bash
+
+# DevSecOps Incident Response Playbook Manager
+# This script helps manage and execute incident response playbooks
+
+PLAYBOOK_DIR="$(dirname "$0")/playbooks"
+LOG_DIR="$(dirname "$0")/logs"
+INCIDENT_DIR="$(dirname "$0")/incidents"
+
+# Create necessary directories
+mkdir -p "$LOG_DIR" "$INCIDENT_DIR"
+
+# Function to list available playbooks
+list_playbooks() {
+    echo "Available Incident Response Playbooks:"
+    echo "======================================"
+    find "$PLAYBOOK_DIR" -name "*.md" -type f | while read -r playbook; do
+        playbook_name=$(basename "$playbook" .md)
+        playbook_dir=$(basename "$(dirname "$playbook")")
+        echo "- $playbook_dir: $playbook_name"
+    done
+}
+
+# Function to display playbook
+show_playbook() {
+    local playbook_type="$1"
+    local playbook_file="$PLAYBOOK_DIR/$playbook_type"
+    
+    if [ -f "$playbook_file" ]; then
+        less "$playbook_file"
+    else
+        echo "Playbook not found: $playbook_file"
+        echo "Available playbooks:"
+        list_playbooks
+    fi
+}
+
+# Function to start incident response
+start_incident() {
+    local incident_type="$1"
+    local incident_id="INC-$(date +%Y%m%d)-$(printf "%03d" $(($(ls "$INCIDENT_DIR" | wc -l) + 1)))"
+    local incident_dir="$INCIDENT_DIR/$incident_id"
+    
+    mkdir -p "$incident_dir"
+    
+    # Create incident log
+    cat > "$incident_dir/incident-log.md" << EOF
+# Incident Response Log
+
+**Incident ID**: $incident_id
+**Type**: $incident_type
+**Start Time**: $(date)
+**Status**: Active
+
+## Timeline
+
+$(date): Incident response initiated
+
+## Actions Taken
+
+- Incident response playbook activated
+- Incident directory created: $incident_dir
+
+## Next Steps
+
+- Follow $incident_type playbook procedures
+- Document all actions in this log
+- Update status regularly
+
+EOF
+
+    echo "Incident $incident_id started"
+    echo "Incident directory: $incident_dir"
+    echo "Log file: $incident_dir/incident-log.md"
+    
+    # Copy relevant playbook to incident directory
+    if [ -f "$PLAYBOOK_DIR/$incident_type/${incident_type}-playbook.md" ]; then
+        cp "$PLAYBOOK_DIR/$incident_type/${incident_type}-playbook.md" "$incident_dir/"
+        echo "Playbook copied to incident directory"
+    fi
+}
+
+# Function to update incident
+update_incident() {
+    local incident_id="$1"
+    local update_message="$2"
+    local incident_dir="$INCIDENT_DIR/$incident_id"
+    
+    if [ -d "$incident_dir" ]; then
+        echo "" >> "$incident_dir/incident-log.md"
+        echo "$(date): $update_message" >> "$incident_dir/incident-log.md"
+        echo "Incident $incident_id updated"
+    else
+        echo "Incident not found: $incident_id"
+    fi
+}
+
+# Function to close incident
+close_incident() {
+    local incident_id="$1"
+    local incident_dir="$INCIDENT_DIR/$incident_id"
+    
+    if [ -d "$incident_dir" ]; then
+        echo "" >> "$incident_dir/incident-log.md"
+        echo "$(date): Incident closed" >> "$incident_dir/incident-log.md"
+        echo "**Status**: Closed" >> "$incident_dir/incident-log.md"
+        echo "Incident $incident_id closed"
+    else
+        echo "Incident not found: $incident_id"
+    fi
+}
+
+# Main script logic
+case "$1" in
+    "list")
+        list_playbooks
+        ;;
+    "show")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 show <playbook-type>"
+            echo "Example: $0 show security-breach"
+        else
+            show_playbook "$2"
+        fi
+        ;;
+    "start")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 start <incident-type>"
+            echo "Example: $0 start security-breach"
+        else
+            start_incident "$2"
+        fi
+        ;;
+    "update")
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            echo "Usage: $0 update <incident-id> \"<update-message>\""
+            echo "Example: $0 update INC-20231201-001 \"Containment actions completed\""
+        else
+            update_incident "$2" "$3"
+        fi
+        ;;
+    "close")
+        if [ -z "$2" ]; then
+            echo "Usage: $0 close <incident-id>"
+            echo "Example: $0 close INC-20231201-001"
+        else
+            close_incident "$2"
+        fi
+        ;;
+    *)
+        echo "DevSecOps Incident Response Playbook Manager"
+        echo "Usage: $0 {list|show|start|update|close}"
+        echo ""
+        echo "Commands:"
+        echo "  list                           - List available playbooks"
+        echo "  show <playbook-type>          - Display a specific playbook"
+        echo "  start <incident-type>         - Start new incident response"
+        echo "  update <incident-id> <message> - Update incident log"
+        echo "  close <incident-id>           - Close incident"
+        echo ""
+        echo "Examples:"
+        echo "  $0 list"
+        echo "  $0 show security-breach"
+        echo "  $0 start security-breach"
+        echo "  $0 update INC-20231201-001 \"Malware removed\""
+        echo "  $0 close INC-20231201-001"
+        ;;
+esac
+Make the script executable:
+chmod +x ../playbook-manager.sh
+Test the playbook manager:
+cd ~/devsecops-lab/incident-response
+./playbook-manager.sh list
+Subtask 2.4: Create Incident Response Checklist
+Create a comprehensive incident response checklist:
+nano documentation/incident-response-checklist.md
+Add the checklist content:
+# Incident Response Checklist
+
+## Pre-Incident Preparation
+- [ ] Incident response team identified and trained
+- [ ] Contact information up to date
+- [ ] Tools and resources available
+- [ ] Communication channels established
+- [ ] Playbooks reviewed and updated
+- [ ] Backup and recovery procedures tested
+
+## Initial Response (0-15 minutes)
+- [ ] Incident detected and reported
+- [ ] Incident Commander assigned
+- [ ] Initial assessment completed
+- [ ] Severity level determined
+- [ ] Stakeholders notified
+- [ ] Response team assembled
+
+## Investigation Phase (15 minutes - 2 hours)
+- [ ] Evidence collection initiated
+- [ ] Forensic procedures followed
+- [ ] Chain of custody maintained
+- [ ] Threat analysis conducted
+- [ ] Scope of impact determined
+- [ ] Timeline established
+
+## Containment Phase (Immediate)
+- [ ] Immediate containment actions taken
+- [ ] Affected systems isolated
+- [ ] Malicious activity stopped
+- [ ] Evidence preserved
+- [ ] Additional monitoring implemented
+- [ ] Containment effectiveness verified
+
+## Eradication Phase
+- [ ] Root cause identified
+- [ ] Vulnerabilities patched
+- [ ] Malicious code removed
+- [ ] System hardening implemented
+- [ ] Security controls updated
+- [ ] Eradication verified
+
+## Recovery Phase
+- [ ] Systems restored from clean backups
+- [ ] Functionality testing completed
+- [ ] Enhanced monitoring deployed
+- [ ] Gradual return to normal operations
+- [ ] Performance monitoring active
+- [ ] Recovery validation completed
+
+## Post-Incident Activities
+- [ ] Incident documentation completed
+- [ ] Post-incident review conducted
+- [ ] Lessons learned documented
+- [ ] Procedures updated
+- [ ] Training needs identified
+- [ ] Preventive measures implemented
+
+## Communication Requirements
+- [ ] Internal stakeholders updated
+- [ ] Executive team briefed
+- [ ] Customers notified (if required)
+- [ ] Regulatory reporting completed
+- [ ] Media response coordinated
+- [ ] Final incident report published
+
+## Legal and Compliance
+- [ ] Legal requirements assessed
+- [ ] Regulatory notifications made
+- [ ] Evidence handling documented
+- [ ] Privacy impact assessed
+- [ ] Compliance obligations met
+- [ ] Legal counsel consul
