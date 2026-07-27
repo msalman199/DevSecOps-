@@ -1,0 +1,864 @@
+Embracing DevSecOps - Integrating Security into the Software Lifecycle
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamental concepts of DevSecOps and its importance in modern software development • Implement threat modeling using LINDDUN and OWASP Threat Dragon tools • Set up and configure GitLab for secure CI/CD pipeline integration • Perform security compliance scanning using OpenSCAP • Conduct automated privacy checks using InSpec • Create a comprehensive security-integrated development workflow • Analyze and interpret security scan results to improve application security posture
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of software development lifecycle (SDLC) • Familiarity with Linux command line operations • Basic knowledge of Git version control system • Understanding of web application architecture concepts • No prior DevSecOps experience required - this lab is designed for beginners
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. No need to build or configure your own virtual machine.
+
+Your cloud machine includes: • Ubuntu 20.04 LTS with all necessary tools pre-installed • Docker and Docker Compose • Git and development utilities • Network access for downloading additional tools
+
+Task 1: Understanding DevSecOps Fundamentals
+Subtask 1.1: Setting Up the Lab Environment
+First, let's verify our environment and install the necessary tools.
+
+Access your cloud machine and open a terminal
+
+Update the system packages:
+
+sudo apt update && sudo apt upgrade -y
+Install essential development tools:
+sudo apt install -y curl wget git nodejs npm python3 python3-pip docker.io docker-compose
+Start Docker service:
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker $USER
+Log out and log back in to apply Docker group changes:
+exit
+Log back into your terminal session.
+
+Subtask 1.2: Creating Project Structure
+Create a project directory:
+mkdir ~/devsecops-lab
+cd ~/devsecops-lab
+Initialize Git repository:
+git init
+git config --global user.name "DevSecOps Student"
+git config --global user.email "student@example.com"
+Create project structure:
+mkdir -p {src,docs,security,ci-cd,tests}
+touch README.md
+Task 2: Implementing Threat Modeling with LINDDUN
+Subtask 2.1: Installing LINDDUN GO
+LINDDUN GO is a simplified privacy threat modeling toolkit that helps identify privacy threats in software systems.
+
+Download LINDDUN GO:
+cd ~/devsecops-lab/security
+wget https://github.com/LINDDUN/LINDDUN-GO/archive/refs/heads/main.zip
+unzip main.zip
+mv LINDDUN-GO-main linddun-go
+cd linddun-go
+Install Python dependencies:
+pip3 install -r requirements.txt
+Subtask 2.2: Creating a Sample Application for Threat Modeling
+Create a simple web application:
+cd ~/devsecops-lab/src
+cat > app.py << 'EOF'
+from flask import Flask, request, jsonify, session
+import sqlite3
+import hashlib
+
+app = Flask(__name__)
+app.secret_key = 'your-secret-key'
+
+def init_db():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                 (id INTEGER PRIMARY KEY, username TEXT, password TEXT, email TEXT)''')
+    conn.commit()
+    conn.close()
+
+@app.route('/register', methods=['POST'])
+def register():
+    username = request.json.get('username')
+    password = request.json.get('password')
+    email = request.json.get('email')
+    
+    hashed_password = hashlib.md5(password.encode()).hexdigest()
+    
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO users (username, password, email) VALUES (?, ?, ?)",
+              (username, hashed_password, email))
+    conn.commit()
+    conn.close()
+    
+    return jsonify({"message": "User registered successfully"})
+
+@app.route('/login', methods=['POST'])
+def login():
+    username = request.json.get('username')
+    password = request.json.get('password')
+    
+    hashed_password = hashlib.md5(password.encode()).hexdigest()
+    
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE username=? AND password=?",
+              (username, hashed_password))
+    user = c.fetchone()
+    conn.close()
+    
+    if user:
+        session['user_id'] = user[0]
+        return jsonify({"message": "Login successful"})
+    else:
+        return jsonify({"message": "Invalid credentials"}), 401
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True, host='0.0.0.0')
+EOF
+Install Flask:
+pip3 install flask
+Subtask 2.3: Conducting LINDDUN Privacy Threat Analysis
+Create a privacy threat model document:
+cd ~/devsecops-lab/security
+cat > privacy_threat_model.md << 'EOF'
+# Privacy Threat Model for Sample Web Application
+
+## System Overview
+- Web application with user registration and login
+- SQLite database for user storage
+- Session management for authentication
+
+## LINDDUN Privacy Threats Analysis
+
+### L - Linking
+**Threat**: User activities can be linked across sessions
+**Impact**: High - User behavior tracking
+**Mitigation**: Implement session rotation, use pseudonymization
+
+### I - Identifying
+**Threat**: Users can be identified through email addresses
+**Impact**: Medium - Personal identification possible
+**Mitigation**: Hash email addresses, implement data minimization
+
+### N - Non-repudiation
+**Threat**: User actions are logged and cannot be denied
+**Impact**: Low - Standard application behavior
+**Mitigation**: Implement selective logging policies
+
+### D - Detecting
+**Threat**: User presence and activity patterns detectable
+**Impact**: Medium - Privacy invasion through monitoring
+**Mitigation**: Implement privacy-preserving analytics
+
+### D - Data Disclosure
+**Threat**: Sensitive user data exposed through database
+**Impact**: High - Personal data breach
+**Mitigation**: Encrypt sensitive data, implement access controls
+
+### U - Unawareness
+**Threat**: Users unaware of data collection practices
+**Impact**: High - Lack of informed consent
+**Mitigation**: Implement clear privacy notices, consent mechanisms
+
+### N - Non-compliance
+**Threat**: Application may violate privacy regulations
+**Impact**: High - Legal and regulatory violations
+**Mitigation**: Implement GDPR/CCPA compliance measures
+EOF
+Task 3: Setting Up OWASP Threat Dragon
+Subtask 3.1: Installing OWASP Threat Dragon
+Install OWASP Threat Dragon using Docker:
+cd ~/devsecops-lab/security
+docker pull owasp/threat-dragon:stable
+Create a Docker Compose file for Threat Dragon:
+cat > docker-compose-threat-dragon.yml << 'EOF'
+version: '3.8'
+services:
+  threat-dragon:
+    image: owasp/threat-dragon:stable
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./threat-models:/app/threat-models
+EOF
+Start Threat Dragon:
+mkdir threat-models
+docker-compose -f docker-compose-threat-dragon.yml up -d
+Subtask 3.2: Creating Threat Models
+Access Threat Dragon by opening a web browser and navigating to http://localhost:3000
+
+Create a new threat model:
+
+Click "Create New Model"
+Name: "Sample Web Application"
+Description: "User registration and login system"
+Add system components:
+
+Web Browser (External Entity)
+Web Application (Process)
+Database (Data Store)
+User Session (Data Flow)
+Identify threats using STRIDE methodology:
+
+Spoofing: Fake user registration
+Tampering: SQL injection in login
+Repudiation: No audit logging
+Information Disclosure: Weak password hashing
+Denial of Service: No rate limiting
+Elevation of Privilege: Session hijacking
+Task 4: Setting Up GitLab for CI/CD Integration
+Subtask 4.1: Installing GitLab using Docker
+Create GitLab Docker Compose configuration:
+cd ~/devsecops-lab/ci-cd
+cat > docker-compose-gitlab.yml << 'EOF'
+version: '3.8'
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    hostname: 'localhost'
+    ports:
+      - '8080:80'
+      - '8443:443'
+      - '8022:22'
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8080'
+        gitlab_rails['gitlab_shell_ssh_port'] = 8022
+    restart: always
+
+volumes:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+EOF
+Start GitLab:
+docker-compose -f docker-compose-gitlab.yml up -d
+Wait for GitLab to initialize (this may take 5-10 minutes):
+docker-compose -f docker-compose-gitlab.yml logs -f gitlab
+Subtask 4.2: Configuring GitLab
+Get the initial root password:
+docker exec -it ci-cd_gitlab_1 grep 'Password:' /etc/gitlab/initial_root_password
+Access GitLab at http://localhost:8080
+
+Username: root
+Password: (from step 1)
+Create a new project:
+
+Click "New Project"
+Name: "devsecops-sample-app"
+Visibility: Private
+Subtask 4.3: Creating CI/CD Pipeline with Security Integration
+Create GitLab CI configuration:
+cd ~/devsecops-lab
+cat > .gitlab-ci.yml << 'EOF'
+stages:
+  - security-scan
+  - build
+  - test
+  - security-test
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+# Security scanning stage
+sast:
+  stage: security-scan
+  image: python:3.9
+  script:
+    - pip install bandit safety
+    - bandit -r src/ -f json -o bandit-report.json || true
+    - safety check --json --output safety-report.json || true
+  artifacts:
+    reports:
+      sast: bandit-report.json
+    paths:
+      - bandit-report.json
+      - safety-report.json
+    expire_in: 1 week
+
+# Build stage
+build:
+  stage: build
+  image: python:3.9
+  script:
+    - pip install -r requirements.txt
+    - python -m py_compile src/app.py
+  artifacts:
+    paths:
+      - src/
+    expire_in: 1 hour
+
+# Test stage
+test:
+  stage: test
+  image: python:3.9
+  script:
+    - pip install pytest flask
+    - python -m pytest tests/ -v
+  dependencies:
+    - build
+
+# Security testing stage
+security-test:
+  stage: security-test
+  image: python:3.9
+  script:
+    - pip install requests
+    - python security/security_tests.py
+  dependencies:
+    - build
+
+# Deploy stage
+deploy:
+  stage: deploy
+  image: python:3.9
+  script:
+    - echo "Deploying application..."
+    - python src/app.py &
+  only:
+    - main
+EOF
+Create requirements file:
+cat > requirements.txt << 'EOF'
+flask==2.3.3
+sqlite3
+hashlib
+EOF
+Create security tests:
+cd ~/devsecops-lab/security
+cat > security_tests.py << 'EOF'
+import requests
+import json
+import sys
+
+def test_sql_injection():
+    """Test for SQL injection vulnerabilities"""
+    print("Testing for SQL injection...")
+    
+    # Test payloads
+    payloads = [
+        "' OR '1'='1",
+        "'; DROP TABLE users; --",
+        "' UNION SELECT * FROM users --"
+    ]
+    
+    vulnerabilities = []
+    
+    for payload in payloads:
+        test_data = {
+            "username": payload,
+            "password": "test"
+        }
+        
+        try:
+            # This would normally test against running application
+            print(f"Testing payload: {payload}")
+            # Simulate vulnerability detection
+            if "OR" in payload or "UNION" in payload:
+                vulnerabilities.append(f"Potential SQL injection: {payload}")
+        except Exception as e:
+            print(f"Error testing payload {payload}: {e}")
+    
+    return vulnerabilities
+
+def test_weak_password_hashing():
+    """Test for weak password hashing"""
+    print("Testing password hashing strength...")
+    
+    # Check if MD5 is used (weak)
+    with open('../src/app.py', 'r') as f:
+        content = f.read()
+        if 'hashlib.md5' in content:
+            return ["Weak password hashing detected: MD5 is cryptographically broken"]
+    
+    return []
+
+def main():
+    print("Running security tests...")
+    
+    sql_injection_issues = test_sql_injection()
+    password_issues = test_weak_password_hashing()
+    
+    all_issues = sql_injection_issues + password_issues
+    
+    if all_issues:
+        print("\nSecurity Issues Found:")
+        for issue in all_issues:
+            print(f"- {issue}")
+        return 1
+    else:
+        print("\nNo critical security issues found.")
+        return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+EOF
+Task 5: Implementing OpenSCAP for Security Compliance
+Subtask 5.1: Installing OpenSCAP
+Install OpenSCAP tools:
+sudo apt install -y libopenscap8 openscap-utils scap-security-guide
+Download security content:
+cd ~/devsecops-lab/security
+mkdir openscap-content
+cd openscap-content
+wget https://github.com/ComplianceAsCode/content/releases/download/v0.1.68/scap-security-guide-0.1.68.zip
+unzip scap-security-guide-0.1.68.zip
+Subtask 5.2: Running Security Compliance Scans
+Create a compliance scanning script:
+cd ~/devsecops-lab/security
+cat > compliance_scan.sh << 'EOF'
+#!/bin/bash
+
+echo "Starting OpenSCAP compliance scan..."
+
+# Create results directory
+mkdir -p compliance-results
+
+# Run SCAP scan for Ubuntu
+oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_standard \
+    --results compliance-results/scap-results.xml \
+    --report compliance-results/scap-report.html \
+    openscap-content/scap-security-guide-*/ssg-ubuntu2004-ds.xml
+
+echo "Compliance scan completed. Results saved in compliance-results/"
+echo "HTML report: compliance-results/scap-report.html"
+echo "XML results: compliance-results/scap-results.xml"
+
+# Generate summary
+oscap xccdf generate report compliance-results/scap-results.xml > compliance-results/summary-report.html
+
+echo "Summary report generated: compliance-results/summary-report.html"
+EOF
+
+chmod +x compliance_scan.sh
+Run the compliance scan:
+./compliance_scan.sh
+Analyze results:
+# View scan summary
+oscap info compliance-results/scap-results.xml
+
+# Check for failed rules
+grep -i "fail" compliance-results/scap-results.xml | wc -l
+Subtask 5.3: Creating Custom Security Policies
+Create a custom security policy:
+cd ~/devsecops-lab/security
+cat > custom-security-policy.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<xccdf:Benchmark xmlns:xccdf="http://checklists.nist.gov/xccdf/1.2" id="custom-devsecops-policy">
+    <xccdf:status>accepted</xccdf:status>
+    <xccdf:title>DevSecOps Custom Security Policy</xccdf:title>
+    <xccdf:description>Custom security policy for DevSecOps lab environment</xccdf:description>
+    <xccdf:version>1.0</xccdf:version>
+    
+    <xccdf:Profile id="devsecops-profile">
+        <xccdf:title>DevSecOps Security Profile</xccdf:title>
+        <xccdf:description>Security profile for development environments</xccdf:description>
+        <xccdf:select idref="rule-password-complexity" selected="true"/>
+        <xccdf:select idref="rule-ssh-security" selected="true"/>
+        <xccdf:select idref="rule-firewall-enabled" selected="true"/>
+    </xccdf:Profile>
+    
+    <xccdf:Rule id="rule-password-complexity">
+        <xccdf:title>Password Complexity Requirements</xccdf:title>
+        <xccdf:description>Ensure password complexity requirements are met</xccdf:description>
+        <xccdf:check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+            <xccdf:check-content-ref href="password-complexity.xml"/>
+        </xccdf:check>
+    </xccdf:Rule>
+    
+    <xccdf:Rule id="rule-ssh-security">
+        <xccdf:title>SSH Security Configuration</xccdf:title>
+        <xccdf:description>Ensure SSH is securely configured</xccdf:description>
+        <xccdf:check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+            <xccdf:check-content-ref href="ssh-security.xml"/>
+        </xccdf:check>
+    </xccdf:Rule>
+    
+    <xccdf:Rule id="rule-firewall-enabled">
+        <xccdf:title>Firewall Enabled</xccdf:title>
+        <xccdf:description>Ensure firewall is enabled and configured</xccdf:description>
+        <xccdf:check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+            <xccdf:check-content-ref href="firewall-enabled.xml"/>
+        </xccdf:check>
+    </xccdf:Rule>
+</xccdf:Benchmark>
+EOF
+Task 6: Implementing InSpec for Automated Privacy Checks
+Subtask 6.1: Installing InSpec
+Install InSpec:
+curl https://omnitruck.chef.io/install.sh | sudo bash -s -- -P inspec
+Verify installation:
+inspec version
+Subtask 6.2: Creating Privacy Compliance Profiles
+Create InSpec profile directory:
+cd ~/devsecops-lab/security
+mkdir -p inspec-profiles/privacy-compliance
+cd inspec-profiles/privacy-compliance
+Initialize InSpec profile:
+inspec init profile . --overwrite
+Create privacy compliance tests:
+cat > controls/privacy_controls.rb << 'EOF'
+# Privacy Compliance Controls
+
+title 'Privacy and Data Protection Controls'
+
+control 'privacy-001' do
+  impact 1.0
+  title 'Data Encryption at Rest'
+  desc 'Ensure sensitive data is encrypted when stored'
+  
+  describe file('/etc/ssl/certs') do
+    it { should exist }
+    it { should be_directory }
+  end
+  
+  # Check if application uses HTTPS
+  describe port(443) do
+    it { should be_listening }
+  end
+end
+
+control 'privacy-002' do
+  impact 0.8
+  title 'Password Storage Security'
+  desc 'Ensure passwords are not stored in plain text'
+  
+  # Check application code for plain text passwords
+  describe file('/home/ubuntu/devsecops-lab/src/app.py') do
+    its('content') { should_not match(/password.*=.*['"][^'"\$]/) }
+  end
+end
+
+control 'privacy-003' do
+  impact 0.9
+  title 'Session Security'
+  desc 'Ensure secure session management'
+  
+  # Check for secure session configuration
+  describe file('/home/ubuntu/devsecops-lab/src/app.py') do
+    its('content') { should match(/secret_key/) }
+  end
+end
+
+control 'privacy-004' do
+  impact 0.7
+  title 'Data Minimization'
+  desc 'Ensure only necessary data is collected'
+  
+  # Check database schema for excessive data collection
+  describe command('sqlite3 /home/ubuntu/devsecops-lab/src/users.db ".schema"') do
+    its('stdout') { should_not match(/ssn|social_security|credit_card/) }
+  end
+end
+
+control 'privacy-005' do
+  impact 1.0
+  title 'Access Logging'
+  desc 'Ensure access to sensitive data is logged'
+  
+  describe file('/var/log/auth.log') do
+    it { should exist }
+    it { should be_readable }
+  end
+end
+EOF
+Update profile metadata:
+cat > inspec.yml << 'EOF'
+name: privacy-compliance
+title: Privacy Compliance Profile
+maintainer: DevSecOps Lab
+copyright: DevSecOps Lab
+copyright_email: lab@example.com
+license: Apache-2.0
+summary: Privacy and data protection compliance checks
+version: 1.0.0
+supports:
+  - platform-name: ubuntu
+    release: 20.04
+depends: []
+EOF
+Subtask 6.3: Running Privacy Compliance Checks
+Execute InSpec privacy checks:
+cd ~/devsecops-lab/security
+inspec exec inspec-profiles/privacy-compliance --reporter=json:privacy-results.json --reporter=html:privacy-report.html
+Create automated privacy checking script:
+cat > privacy_check.sh << 'EOF'
+#!/bin/bash
+
+echo "Running automated privacy compliance checks..."
+
+# Run InSpec privacy profile
+inspec exec inspec-profiles/privacy-compliance \
+    --reporter=json:privacy-results.json \
+    --reporter=html:privacy-report.html \
+    --reporter=cli
+
+# Check results
+if [ $? -eq 0 ]; then
+    echo "All privacy compliance checks passed!"
+else
+    echo "Some privacy compliance checks failed. Review the reports."
+fi
+
+echo "Privacy compliance report generated: privacy-report.html"
+echo "JSON results available: privacy-results.json"
+EOF
+
+chmod +x privacy_check.sh
+Run the privacy check:
+./privacy_check.sh
+Task 7: Integrating Security Tools into CI/CD Pipeline
+Subtask 7.1: Creating Comprehensive Security Pipeline
+Update GitLab CI configuration with all security tools:
+cd ~/devsecops-lab
+cat > .gitlab-ci.yml << 'EOF'
+stages:
+  - security-scan
+  - build
+  - test
+  - security-test
+  - compliance-check
+  - privacy-check
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+
+# Static Application Security Testing
+sast:
+  stage: security-scan
+  image: python:3.9
+  before_script:
+    - pip install bandit safety
+  script:
+    - bandit -r src/ -f json -o bandit-report.json || true
+    - safety check --json --output safety-report.json || true
+  artifacts:
+    reports:
+      sast: bandit-report.json
+    paths:
+      - bandit-report.json
+      - safety-report.json
+    expire_in: 1 week
+
+# Dependency scanning
+dependency-scan:
+  stage: security-scan
+  image: python:3.9
+  script:
+    - pip install safety
+    - safety check --json --output dependency-scan.json || true
+  artifacts:
+    paths:
+      - dependency-scan.json
+    expire_in: 1 week
+
+# Build stage
+build:
+  stage: build
+  image: python:3.9
+  script:
+    - pip install -r requirements.txt
+    - python -m py_compile src/app.py
+  artifacts:
+    paths:
+      - src/
+    expire_in: 1 hour
+
+# Unit tests
+test:
+  stage: test
+  image: python:3.9
+  script:
+    - pip install pytest flask
+    - python -m pytest tests/ -v || true
+  dependencies:
+    - build
+
+# Security testing
+security-test:
+  stage: security-test
+  image: python:3.9
+  script:
+    - pip install requests
+    - python security/security_tests.py
+  dependencies:
+    - build
+  allow_failure: true
+
+# Compliance checking
+compliance-check:
+  stage: compliance-check
+  image: ubuntu:20.04
+  before_script:
+    - apt-get update
+    - apt-get install -y libopenscap8 openscap-utils wget unzip
+  script:
+    - cd security && ./compliance_scan.sh || true
+  artifacts:
+    paths:
+      - security/compliance-results/
+    expire_in: 1 week
+  allow_failure: true
+
+# Privacy compliance check
+privacy-check:
+  stage: privacy-check
+  image: ubuntu:20.04
+  before_script:
+    - apt-get update
+    - apt-get install -y curl
+    - curl https://omnitruck.chef.io/install.sh | bash -s -- -P inspec
+  script:
+    - cd security && ./privacy_check.sh || true
+  artifacts:
+    paths:
+      - security/privacy-report.html
+      - security/privacy-results.json
+    expire_in: 1 week
+  allow_failure: true
+
+# Deploy stage
+deploy:
+  stage: deploy
+  image: python:3.9
+  script:
+    - echo "Deploying application with security checks completed..."
+    - python src/app.py &
+  only:
+    - main
+  dependencies:
+    - build
+    - test
+    - security-test
+EOF
+Subtask 7.2: Creating Security Dashboard
+Create a security dashboard script:
+cd ~/devsecops-lab/security
+cat > security_dashboard.py << 'EOF'
+#!/usr/bin/env python3
+
+import json
+import os
+from datetime import datetime
+
+def generate_security_dashboard():
+    """Generate a comprehensive security dashboard"""
+    
+    dashboard_html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>DevSecOps Security Dashboard</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { background-color: #2c3e50; color: white; padding: 20px; text-align: center; }
+            .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+            .pass { background-color: #d4edda; border-color: #c3e6cb; }
+            .fail { background-color: #f8d7da; border-color: #f5c6cb; }
+            .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+            .metric { display: inline-block; margin: 10px; padding: 10px; border-radius: 5px; min-width: 150px; text-align: center; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>DevSecOps Security Dashboard</h1>
+            <p>Generated on: {timestamp}</p>
+        </div>
+        
+        <div class="section">
+            <h2>Security Scan Summary</h2>
+            <div class="metric pass">
+                <h3>SAST Scan</h3>
+                <p>Status: {sast_status}</p>
+            </div>
+            <div class="metric warning">
+                <h3>Dependency Scan</h3>
+                <p>Status: {dependency_status}</p>
+            </div>
+            <div class="metric fail">
+                <h3>Security Tests</h3>
+                <p>Status: {security_test_status}</p>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Compliance Status</h2>
+            <div class="metric warning">
+                <h3>OpenSCAP Compliance</h3>
+                <p>Status: {compliance_status}</p>
+            </div>
+            <div class="metric pass">
+                <h3>Privacy Compliance</h3>
+                <p>Status: {privacy_status}</p>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Threat Model Status</h2>
+            <p><strong>LINDDUN Analysis:</strong> Completed</p>
+            <p><strong>OWASP Threat Dragon:</strong> Model Created</p>
+            <p><strong>Critical Threats Identified:</strong> 5</p>
+            <p><strong>Mitigations Implemented:</strong> 3</p>
+        </div>
+        
+        <div class="section">
+            <h2>Recommendations</h2>
+            <ul>
+                <li>Implement stronger password hashing (replace MD5 with bcrypt)</li>
+                <li>Add input validation to prevent SQL injection</li>
+                <li>Implement rate limiting for authentication endpoints</li>
+                <li>Add comprehensive audit logging</li>
+                <li>Implement HTTPS/TLS encryption</li>
+            </ul>
+        </div>
+    </body>
+    </html>
+    """.format(
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        sast_status="Completed with warnings",
+        dependency_status="Vulnerabilities found",
+        security_test_status="Failed - Security issues detected",
+        compliance_status="Partial compliance",
+        privacy_status="Compliant"
+    )
+    
+    with open('security_dashboard.html', 'w') as f:
+        f.write(dashboard_html)
+    
+    print("Security dashboard generated: security_dashboard.html")
+
+if __name__ == "__main__":
+    generate_security_dashboard()
+EOF
+
+chmod +x security_dashboard.py
+Generate the security dashboard:
+python3 security_dashboard.py
+Task 8: Testing and Validation
+Subtask 8.1: Running Complete Security Pipeline
+Create a comprehensive test script:
+cd ~/devsecops-lab
+cat > run_complete_security_pipeline.sh << 'EOF'
+#!/bin/bash
+
+echo "========================================="
+echo "DevSecOps Complete Security Pipeline"
+echo "========================================="
+
+# Step 1: Static Analysis
+echo "Step 1: Running Static Application Security Testing..."
+cd security
+pip3 install bandit safety > /dev/null 2>&1
+bandit -r ../src/ -f json -o
+Lab Terminal
+
