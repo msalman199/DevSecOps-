@@ -1,0 +1,12 @@
+name: privacy-compliance
+title: Privacy Compliance Profile
+maintainer: DevSecOps Lab
+copyright: DevSecOps Lab
+copyright_email: lab@example.com
+license: Apache-2.0
+summary: Privacy and data protection compliance checks
+version: 1.0.0
+supports:
+  - platform-name: ubuntu
+    release: 20.04
+depends: []
