@@ -1,0 +1,32 @@
+DevSecOps Application Architecture
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│                 │    │                 │    │                 │
+│   Internet      │    │   Load          │    │   Web           │
+│   Users         │◄──►│   Balancer      │◄──►│   Application   │
+│                 │    │   (nginx)       │    │   (Flask)       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │                 │    │                 │
+                       │   HashiCorp     │◄──►│   Configuration │
+                       │   Vault         │    │   Management    │
+                       │                 │    │                 │
+                       └─────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │                 │    │                 │
+                       │   Monitoring    │◄──►│   Logging       │
+                       │   (Prometheus)  │    │   (ELK Stack)   │
+                       │                 │    │                 │
+                       └─────────────────┘    └─────────────────┘
+
+Security Controls:
+- TLS/SSL encryption
+- Authentication & Authorization
+- Input validation
+- Security headers
+- Secret management
+- Network segmentation
