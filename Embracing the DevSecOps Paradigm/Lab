@@ -1,0 +1,1055 @@
+Embracing the DevSecOps Paradigm
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Understand the core principles of DevSecOps and its importance in modern software development • Integrate security scanning tools (SonarQube, Dependency Check, ZAP) into CI/CD pipelines • Implement secret management using HashiCorp Vault • Create and validate Infrastructure as Code (IaC) templates using Terraform • Integrate Open Policy Agent (OPA) for policy enforcement • Design application architecture and perform threat modeling using Microsoft Threat Modeling Tool • Build a comprehensive DevSecOps pipeline from scratch
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of software development lifecycle • Familiarity with Linux command line operations • Basic knowledge of Git version control • Understanding of containerization concepts (Docker) • Basic networking concepts • Familiarity with YAML and JSON formats
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click "Start Lab" to access your dedicated environment. No need to build your own VM or install additional software - everything is pre-installed and ready to use.
+
+Your lab environment includes: • Ubuntu 20.04 LTS with Docker and Docker Compose • Jenkins for CI/CD pipeline • Git for version control • All required tools pre-installed
+
+Part 1: Setting Up the DevSecOps Pipeline Foundation
+Task 1.1: Initialize Your Project Repository
+Step 1: Create Project Structure
+# Navigate to home directory
+cd ~
+
+# Create main project directory
+mkdir devsecops-lab
+cd devsecops-lab
+
+# Initialize Git repository
+git init
+
+# Create basic project structure
+mkdir -p {src,tests,infrastructure,policies,configs}
+mkdir -p .github/workflows
+
+# Create a simple application file
+cat > src/app.py << 'EOF'
+from flask import Flask, request, jsonify
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return "Hello DevSecOps World!"
+
+@app.route('/api/data')
+def get_data():
+    # Intentional vulnerability for demonstration
+    user_input = request.args.get('input', '')
+    return f"You entered: {user_input}"
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+EOF
+
+# Create requirements file
+cat > requirements.txt << 'EOF'
+Flask==2.3.3
+requests==2.31.0
+EOF
+
+# Create Dockerfile
+cat > Dockerfile << 'EOF'
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY src/ .
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
+EOF
+Step 2: Create Initial Git Commit
+# Add all files to git
+git add .
+
+# Configure git (replace with your details)
+git config user.name "DevSecOps Student"
+git config user.email "student@example.com"
+
+# Create initial commit
+git commit -m "Initial project setup"
+Part 2: Integrating Security Scanning Tools
+Task 2.1: Setting Up SonarQube
+Step 1: Deploy SonarQube using Docker Compose
+# Create docker-compose file for SonarQube
+cat > docker-compose.sonarqube.yml << 'EOF'
+version: '3.8'
+
+services:
+  sonarqube:
+    image: sonarqube:9.9-community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+
+volumes:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
+EOF
+
+# Start SonarQube
+docker-compose -f docker-compose.sonarqube.yml up -d
+
+# Wait for SonarQube to start (this may take a few minutes)
+echo "Waiting for SonarQube to start..."
+sleep 60
+
+# Check if SonarQube is running
+curl -f http://localhost:9000 && echo "SonarQube is running!" || echo "SonarQube is still starting..."
+Step 2: Configure SonarQube Project
+# Create SonarQube configuration file
+cat > sonar-project.properties << 'EOF'
+sonar.projectKey=devsecops-lab
+sonar.projectName=DevSecOps Lab Project
+sonar.projectVersion=1.0
+sonar.sources=src
+sonar.language=py
+sonar.sourceEncoding=UTF-8
+sonar.python.coverage.reportPaths=coverage.xml
+EOF
+Task 2.2: Setting Up OWASP Dependency Check
+Step 1: Create Dependency Check Script
+# Create dependency check script
+cat > scripts/dependency-check.sh << 'EOF'
+#!/bin/bash
+
+# Create scripts directory if it doesn't exist
+mkdir -p scripts
+
+# Download OWASP Dependency Check
+DEPENDENCY_CHECK_VERSION="8.4.0"
+wget -O dependency-check.zip "https://github.com/jeremylong/DependencyCheck/releases/download/v${DEPENDENCY_CHECK_VERSION}/dependency-check-${DEPENDENCY_CHECK_VERSION}-release.zip"
+
+# Extract and setup
+unzip dependency-check.zip
+mv dependency-check dependency-check-tool
+
+# Run dependency check
+./dependency-check-tool/bin/dependency-check.sh \
+    --project "DevSecOps Lab" \
+    --scan . \
+    --format HTML \
+    --format JSON \
+    --out reports/dependency-check
+
+echo "Dependency check completed. Reports available in reports/dependency-check/"
+EOF
+
+# Make script executable
+chmod +x scripts/dependency-check.sh
+
+# Create reports directory
+mkdir -p reports/dependency-check
+Task 2.3: Setting Up OWASP ZAP
+Step 1: Create ZAP Security Testing Script
+# Create ZAP testing script
+cat > scripts/zap-scan.sh << 'EOF'
+#!/bin/bash
+
+# Create reports directory
+mkdir -p reports/zap
+
+# Start the application in background for testing
+echo "Starting application for security testing..."
+python3 src/app.py &
+APP_PID=$!
+
+# Wait for application to start
+sleep 10
+
+# Run ZAP baseline scan using Docker
+docker run -v $(pwd)/reports/zap:/zap/wrk/:rw \
+    -t owasp/zap2docker-stable zap-baseline.py \
+    -t http://host.docker.internal:5000 \
+    -J zap-report.json \
+    -r zap-report.html
+
+# Stop the application
+kill $APP_PID
+
+echo "ZAP security scan completed. Reports available in reports/zap/"
+EOF
+
+# Make script executable
+chmod +x scripts/zap-scan.sh
+Part 3: Implementing Secret Management with HashiCorp Vault
+Task 3.1: Setting Up Vault
+Step 1: Deploy Vault using Docker
+# Create Vault configuration
+cat > configs/vault-config.hcl << 'EOF'
+ui = true
+disable_mlock = true
+
+storage "file" {
+  path = "/vault/data"
+}
+
+listener "tcp" {
+  address = "0.0.0.0:8200"
+  tls_disable = 1
+}
+EOF
+
+# Create docker-compose file for Vault
+cat > docker-compose.vault.yml << 'EOF'
+version: '3.8'
+
+services:
+  vault:
+    image: vault:1.15.0
+    container_name: vault
+    ports:
+      - "8200:8200"
+    volumes:
+      - ./configs/vault-config.hcl:/vault/config/vault-config.hcl
+      - vault_data:/vault/data
+    cap_add:
+      - IPC_LOCK
+    command: vault server -config=/vault/config/vault-config.hcl
+
+volumes:
+  vault_data:
+EOF
+
+# Start Vault
+docker-compose -f docker-compose.vault.yml up -d
+
+# Wait for Vault to start
+sleep 10
+Step 2: Initialize and Configure Vault
+# Set Vault address
+export VAULT_ADDR='http://localhost:8200'
+
+# Initialize Vault (save the output securely)
+vault operator init -key-shares=1 -key-threshold=1 > vault-keys.txt
+
+# Extract unseal key and root token
+UNSEAL_KEY=$(grep 'Unseal Key 1:' vault-keys.txt | awk '{print $NF}')
+ROOT_TOKEN=$(grep 'Initial Root Token:' vault-keys.txt | awk '{print $NF}')
+
+# Unseal Vault
+vault operator unseal $UNSEAL_KEY
+
+# Login to Vault
+vault auth $ROOT_TOKEN
+
+# Enable KV secrets engine
+vault secrets enable -path=secret kv-v2
+
+# Store sample secrets
+vault kv put secret/app/config \
+    database_url="postgresql://user:pass@localhost:5432/mydb" \
+    api_key="super-secret-api-key-12345" \
+    jwt_secret="my-jwt-secret-key"
+
+echo "Vault setup completed!"
+echo "Root Token: $ROOT_TOKEN"
+echo "Unseal Key: $UNSEAL_KEY"
+Step 3: Create Vault Integration Script
+# Create Vault integration script
+cat > scripts/vault-integration.py << 'EOF'
+#!/usr/bin/env python3
+
+import hvac
+import os
+import sys
+
+def get_secrets_from_vault():
+    """Retrieve secrets from Vault"""
+    
+    # Initialize Vault client
+    client = hvac.Client(url='http://localhost:8200')
+    
+    # Authenticate (in production, use proper auth methods)
+    vault_token = os.getenv('VAULT_TOKEN')
+    if not vault_token:
+        print("Error: VAULT_TOKEN environment variable not set")
+        sys.exit(1)
+    
+    client.token = vault_token
+    
+    try:
+        # Read secrets
+        secret_response = client.secrets.kv.v2.read_secret_version(
+            path='app/config'
+        )
+        
+        secrets = secret_response['data']['data']
+        
+        print("Successfully retrieved secrets from Vault:")
+        for key in secrets.keys():
+            print(f"- {key}: {'*' * len(secrets[key])}")
+        
+        return secrets
+        
+    except Exception as e:
+        print(f"Error retrieving secrets: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    get_secrets_from_vault()
+EOF
+
+# Make script executable
+chmod +x scripts/vault-integration.py
+
+# Install required Python package
+pip3 install hvac
+Part 4: Infrastructure as Code with Terraform
+Task 4.1: Creating Terraform Templates
+Step 1: Create Basic Infrastructure Template
+# Create Terraform directory structure
+mkdir -p infrastructure/terraform/{modules,environments/dev}
+
+# Create main Terraform configuration
+cat > infrastructure/terraform/main.tf << 'EOF'
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0"
+    }
+  }
+}
+
+provider "docker" {
+  host = "unix:///var/run/docker.sock"
+}
+
+# Create a network for our application
+resource "docker_network" "app_network" {
+  name = "devsecops-network"
+}
+
+# Create application container
+resource "docker_image" "app_image" {
+  name = "devsecops-app:latest"
+  build {
+    context = "../../"
+    dockerfile = "Dockerfile"
+  }
+}
+
+resource "docker_container" "app_container" {
+  name  = "devsecops-app"
+  image = docker_image.app_image.image_id
+  
+  ports {
+    internal = 5000
+    external = 5000
+  }
+  
+  networks_advanced {
+    name = docker_network.app_network.name
+  }
+  
+  env = [
+    "ENVIRONMENT=development"
+  ]
+}
+
+# Output the application URL
+output "application_url" {
+  value = "http://localhost:5000"
+}
+EOF
+
+# Create variables file
+cat > infrastructure/terraform/variables.tf << 'EOF'
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "dev"
+}
+
+variable "app_port" {
+  description = "Application port"
+  type        = number
+  default     = 5000
+}
+
+variable "app_name" {
+  description = "Application name"
+  type        = string
+  default     = "devsecops-app"
+}
+EOF
+Step 2: Initialize and Plan Terraform
+# Navigate to Terraform directory
+cd infrastructure/terraform
+
+# Initialize Terraform
+terraform init
+
+# Validate configuration
+terraform validate
+
+# Plan the infrastructure
+terraform plan -out=tfplan
+
+# Show the plan
+terraform show tfplan
+Task 4.2: Terraform Security Validation
+Step 1: Install and Configure tfsec
+# Install tfsec (Terraform security scanner)
+curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+
+# Move tfsec to PATH
+sudo mv tfsec /usr/local/bin/
+
+# Create tfsec configuration
+cat > .tfsec.yml << 'EOF'
+severity_overrides:
+  HIGH: ERROR
+  MEDIUM: WARNING
+  LOW: INFO
+
+exclude:
+  - docker-port-exposed-to-internet
+EOF
+
+# Run tfsec scan
+tfsec . --format json --out tfsec-report.json
+tfsec . --format lovely
+
+echo "Terraform security scan completed!"
+Step 2: Create Terraform Validation Script
+# Create comprehensive Terraform validation script
+cat > ../../scripts/terraform-validate.sh << 'EOF'
+#!/bin/bash
+
+echo "=== Terraform Security Validation ==="
+
+# Navigate to Terraform directory
+cd infrastructure/terraform
+
+# 1. Terraform format check
+echo "1. Checking Terraform formatting..."
+terraform fmt -check -recursive
+
+# 2. Terraform validation
+echo "2. Validating Terraform configuration..."
+terraform validate
+
+# 3. Security scanning with tfsec
+echo "3. Running security scan with tfsec..."
+tfsec . --format lovely
+
+# 4. Plan validation
+echo "4. Creating and validating Terraform plan..."
+terraform plan -out=tfplan
+
+# 5. Policy validation (if OPA policies exist)
+if [ -f "../../policies/terraform.rego" ]; then
+    echo "5. Validating against OPA policies..."
+    terraform show -json tfplan > tfplan.json
+    opa eval -d ../../policies -i tfplan.json "data.terraform.deny[x]"
+fi
+
+echo "=== Terraform validation completed ==="
+EOF
+
+# Make script executable
+chmod +x ../../scripts/terraform-validate.sh
+
+# Return to project root
+cd ../../
+Part 5: Integrating Open Policy Agent (OPA)
+Task 5.1: Setting Up OPA
+Step 1: Install OPA
+# Download and install OPA
+curl -L -o opa https://openpolicyagent.org/downloads/v0.57.0/opa_linux_amd64_static
+chmod +x opa
+sudo mv opa /usr/local/bin/
+
+# Verify installation
+opa version
+Step 2: Create OPA Policies
+# Create policies directory structure
+mkdir -p policies/{terraform,docker,kubernetes}
+
+# Create Terraform security policy
+cat > policies/terraform.rego << 'EOF'
+package terraform
+
+import rego.v1
+
+# Deny if containers expose ports to 0.0.0.0
+deny contains msg if {
+    resource := input.planned_values.root_module.resources[_]
+    resource.type == "docker_container"
+    port := resource.values.ports[_]
+    port.external != null
+    msg := sprintf("Container '%s' exposes port %d to all interfaces", [resource.name, port.external])
+}
+
+# Deny if containers run as root
+deny contains msg if {
+    resource := input.planned_values.root_module.resources[_]
+    resource.type == "docker_container"
+    not resource.values.user
+    msg := sprintf("Container '%s' runs as root user", [resource.name])
+}
+
+# Require environment specification
+deny contains msg if {
+    resource := input.planned_values.root_module.resources[_]
+    resource.type == "docker_container"
+    not has_environment_tag(resource)
+    msg := sprintf("Container '%s' missing environment specification", [resource.name])
+}
+
+has_environment_tag(resource) if {
+    env := resource.values.env[_]
+    startswith(env, "ENVIRONMENT=")
+}
+EOF
+
+# Create Docker security policy
+cat > policies/docker.rego << 'EOF'
+package docker
+
+import rego.v1
+
+# Deny running containers as root
+deny contains msg if {
+    input.User == "root"
+    msg := "Container should not run as root user"
+}
+
+# Deny containers without health checks
+deny contains msg if {
+    not input.Config.Healthcheck
+    msg := "Container should have health check configured"
+}
+
+# Deny containers with privileged mode
+deny contains msg if {
+    input.HostConfig.Privileged == true
+    msg := "Container should not run in privileged mode"
+}
+EOF
+
+# Create application security policy
+cat > policies/application.rego << 'EOF'
+package application
+
+import rego.v1
+
+# Deny if debug mode is enabled in production
+deny contains msg if {
+    input.environment == "production"
+    input.debug == true
+    msg := "Debug mode should not be enabled in production"
+}
+
+# Require HTTPS in production
+deny contains msg if {
+    input.environment == "production"
+    input.protocol != "https"
+    msg := "HTTPS must be used in production environment"
+}
+EOF
+Step 3: Create OPA Validation Scripts
+# Create OPA validation script
+cat > scripts/opa-validate.sh << 'EOF'
+#!/bin/bash
+
+echo "=== OPA Policy Validation ==="
+
+# 1. Validate Terraform plan against policies
+if [ -f "infrastructure/terraform/tfplan.json" ]; then
+    echo "1. Validating Terraform plan against OPA policies..."
+    opa eval -d policies -i infrastructure/terraform/tfplan.json "data.terraform.deny[x]"
+else
+    echo "1. No Terraform plan found, skipping validation"
+fi
+
+# 2. Validate Docker configuration
+echo "2. Validating Docker configuration..."
+docker inspect devsecops-app 2>/dev/null | opa eval -d policies -I "data.docker.deny[x]" || echo "Container not running"
+
+# 3. Validate application configuration
+echo "3. Validating application configuration..."
+cat > temp-app-config.json << 'TEMP_EOF'
+{
+    "environment": "development",
+    "debug": true,
+    "protocol": "http"
+}
+TEMP_EOF
+
+opa eval -d policies -i temp-app-config.json "data.application.deny[x]"
+rm temp-app-config.json
+
+echo "=== OPA validation completed ==="
+EOF
+
+# Make script executable
+chmod +x scripts/opa-validate.sh
+Part 6: Creating CI/CD Pipeline
+Task 6.1: Jenkins Pipeline Configuration
+Step 1: Create Jenkinsfile
+# Create comprehensive Jenkinsfile
+cat > Jenkinsfile << 'EOF'
+pipeline {
+    agent any
+    
+    environment {
+        VAULT_ADDR = 'http://localhost:8200'
+        VAULT_TOKEN = credentials('vault-token')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Security Scan - Secrets') {
+            steps {
+                script {
+                    sh '''
+                        echo "Scanning for secrets in code..."
+                        # Install truffleHog for secret scanning
+                        pip3 install truffleHog3
+                        trufflehog3 --format json --output secrets-report.json ./ || true
+                    '''
+                }
+            }
+        }
+        
+        stage('Static Code Analysis') {
+            parallel {
+                stage('SonarQube Analysis') {
+                    steps {
+                        script {
+                            sh '''
+                                # Run SonarQube analysis
+                                docker run --rm \
+                                    -v $(pwd):/usr/src \
+                                    -w /usr/src \
+                                    --network host \
+                                    sonarsource/sonar-scanner-cli \
+                                    -Dsonar.host.url=http://localhost:9000 \
+                                    -Dsonar.login=admin \
+                                    -Dsonar.password=admin
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Dependency Check') {
+                    steps {
+                        script {
+                            sh './scripts/dependency-check.sh'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                script {
+                    sh '''
+                        echo "Building application..."
+                        docker build -t devsecops-app:${BUILD_NUMBER} .
+                        docker tag devsecops-app:${BUILD_NUMBER} devsecops-app:latest
+                    '''
+                }
+            }
+        }
+        
+        stage('Infrastructure Validation') {
+            steps {
+                script {
+                    sh './scripts/terraform-validate.sh'
+                }
+            }
+        }
+        
+        stage('Policy Validation') {
+            steps {
+                script {
+                    sh './scripts/opa-validate.sh'
+                }
+            }
+        }
+        
+        stage('Deploy to Test Environment') {
+            steps {
+                script {
+                    sh '''
+                        cd infrastructure/terraform
+                        terraform apply -auto-approve tfplan
+                    '''
+                }
+            }
+        }
+        
+        stage('Dynamic Security Testing') {
+            steps {
+                script {
+                    sh './scripts/zap-scan.sh'
+                }
+            }
+        }
+        
+        stage('Security Report') {
+            steps {
+                script {
+                    sh '''
+                        echo "Generating security report..."
+                        mkdir -p reports/consolidated
+                        
+                        # Create consolidated security report
+                        cat > reports/consolidated/security-summary.md << 'REPORT_EOF'
+# DevSecOps Security Report
+
+## Scan Results Summary
+
+### 1. Secret Scanning
+- Tool: TruffleHog
+- Report: secrets-report.json
+
+### 2. Static Code Analysis
+- Tool: SonarQube
+- Dashboard: http://localhost:9000
+
+### 3. Dependency Scanning
+- Tool: OWASP Dependency Check
+- Report: reports/dependency-check/
+
+### 4. Infrastructure Security
+- Tool: tfsec
+- Report: infrastructure/terraform/tfsec-report.json
+
+### 5. Dynamic Security Testing
+- Tool: OWASP ZAP
+- Report: reports/zap/
+
+### 6. Policy Compliance
+- Tool: Open Policy Agent
+- Policies: policies/
+
+REPORT_EOF
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'reports',
+                reportFiles: '**/*.html',
+                reportName: 'Security Reports'
+            ])
+        }
+    }
+}
+EOF
+Step 2: Create GitHub Actions Workflow
+# Create GitHub Actions workflow
+cat > .github/workflows/devsecops.yml << 'EOF'
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install truffleHog3
+    
+    - name: Secret Scanning
+      run: |
+        trufflehog3 --format json --output secrets-report.json ./ || true
+    
+    - name: Static Code Analysis with SonarQube
+      uses: sonarqube-quality-gate-action@master
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    
+    - name: Dependency Check
+      run: |
+        chmod +x scripts/dependency-check.sh
+        ./scripts/dependency-check.sh
+    
+    - name: Build Docker Image
+      run: |
+        docker build -t devsecops-app:${{ github.sha }} .
+    
+    - name: Terraform Security Scan
+      run: |
+        # Install tfsec
+        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+        sudo mv tfsec /usr/local/bin/
+        
+        # Run security scan
+        chmod +x scripts/terraform-validate.sh
+        ./scripts/terraform-validate.sh
+    
+    - name: OPA Policy Validation
+      run: |
+        # Install OPA
+        curl -L -o opa https://openpolicyagent.org/downloads/v0.57.0/opa_linux_amd64_static
+        chmod +x opa
+        sudo mv opa /usr/local/bin/
+        
+        # Run policy validation
+        chmod +x scripts/opa-validate.sh
+        ./scripts/opa-validate.sh
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: reports/
+EOF
+Part 7: Application Architecture and Threat Modeling
+Task 7.1: Design Application Architecture
+Step 1: Create Architecture Documentation
+# Create architecture documentation
+cat > docs/architecture.md << 'EOF'
+# DevSecOps Lab Application Architecture
+
+## Overview
+This document describes the architecture of our DevSecOps demonstration application.
+
+## System Architecture
+
+### Components
+
+1. **Web Application Layer**
+   - Flask-based Python web application
+   - RESTful API endpoints
+   - Static content serving
+
+2. **Security Layer**
+   - Authentication and authorization
+   - Input validation
+   - Security headers
+
+3. **Data Layer**
+   - Configuration management
+   - Secret storage (Vault integration)
+
+4. **Infrastructure Layer**
+   - Containerized deployment (Docker)
+   - Network security
+   - Monitoring and logging
+
+### Data Flow
+
+1. User Request → Web Application
+2. Application → Vault (for secrets)
+3. Application → Data Processing
+4. Response → User
+
+### Security Boundaries
+
+- Network boundary (firewall/security groups)
+- Application boundary (authentication)
+- Data boundary (encryption at rest/transit)
+
+## Threat Model Scope
+
+### Assets
+- User data
+- Application secrets
+- Infrastructure configuration
+- Source code
+
+### Trust Boundaries
+- Internet ↔ Application
+- Application ↔ Vault
+- Application ↔ Infrastructure
+
+### Entry Points
+- HTTP/HTTPS endpoints
+- API endpoints
+- Configuration files
+- Environment variables
+EOF
+
+# Create architecture diagram (ASCII art)
+cat > docs/architecture-diagram.txt << 'EOF'
+DevSecOps Application Architecture
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│                 │    │                 │    │                 │
+│   Internet      │    │   Load          │    │   Web           │
+│   Users         │◄──►│   Balancer      │◄──►│   Application   │
+│                 │    │   (nginx)       │    │   (Flask)       │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │                 │    │                 │
+                       │   HashiCorp     │◄──►│   Configuration │
+                       │   Vault         │    │   Management    │
+                       │                 │    │                 │
+                       └─────────────────┘    └─────────────────┘
+                                                        │
+                                                        ▼
+                       ┌─────────────────┐    ┌─────────────────┐
+                       │                 │    │                 │
+                       │   Monitoring    │◄──►│   Logging       │
+                       │   (Prometheus)  │    │   (ELK Stack)   │
+                       │                 │    │                 │
+                       └─────────────────┘    └─────────────────┘
+
+Security Controls:
+- TLS/SSL encryption
+- Authentication & Authorization
+- Input validation
+- Security headers
+- Secret management
+- Network segmentation
+EOF
+Task 7.2: Threat Modeling with Microsoft Threat Modeling Tool
+Step 1: Prepare Threat Model Data
+# Create threat model preparation script
+cat > scripts/prepare-threat-model.sh << 'EOF'
+#!/bin/bash
+
+echo "=== Preparing Threat Model Data ==="
+
+# Create threat model directory
+mkdir -p threat-model
+
+# Create STRIDE analysis template
+cat > threat-model/stride-analysis.md << 'STRIDE_EOF'
+# STRIDE Threat Analysis
+
+## Spoofing
+- **Threat**: Attacker impersonates legitimate user
+- **Mitigation**: Strong authentication, multi-factor authentication
+- **Status**: Implemented
+
+## Tampering
+- **Threat**: Unauthorized modification of data or code
+- **Mitigation**: Input validation, integrity checks, code signing
+- **Status**: Partially implemented
+
+## Repudiation
+- **Threat**: Users deny performing actions
+- **Mitigation**: Comprehensive logging, digital signatures
+- **Status**: Implemented
+
+## Information Disclosure
+- **Threat**: Unauthorized access to sensitive information
+- **Mitigation**: Encryption, access controls, data classification
+- **Status**: Implemented
+
+## Denial of Service
+- **Threat**: Service unavailability
+- **Mitigation**: Rate limiting, resource monitoring, redundancy
+- **Status**: Partially implemented
+
+## Elevation of Privilege
+- **Threat**: Gaining unauthorized access levels
+- **Mitigation**: Principle of least privilege, regular access reviews
+- **Status**: Implemented
+
+STRIDE_EOF
+
+# Create attack surface analysis
+cat > threat-model/attack-surface.md << 'ATTACK_EOF'
+# Attack Surface Analysis
+
+## External Attack Surface
+
+### Web Application
+- **Entry Points**: HTTP/HTTPS endpoints
+- **Attack Vectors**: 
+  - SQL injection
+  - Cross-site scripting (XSS)
+  - Cross-site request forgery (CSRF)
+  - Authentication bypass
+- **Risk Level**: High
+
+### API Endpoints
+- **Entry Points**: REST API
+- **Attack Vectors**:
+  - API abuse
+  - Injection attacks
+  - Broken authentication
+- **Risk Level**: High
+
+## Internal Attack Surface
+
+### Configuration Management
+- **Entry Points**: Environment variables, config files
+- **Attack Vectors**:
+  - Configuration tampering
+  - Secret exposure
+- **Risk Level**: Medium
+
+### Infrastructure
+- **Entry Points**: Container runtime, network
+- **Attack Vectors**:
+  - Container escape
+  - Network lateral movement
+- **Risk Level**: Medium
+
+ATTACK_EOF
+
+# Create threat scenarios
+cat > threat-model/threat-scenarios.md << 'SCENARIOS_EOF'
+# Threat Scenarios
+
+## Scenario 1: Malicious User Input
+- **Description**: Attacker submits malicious input to exploit application vulnerabilities
+- **Impact**: Data breach, system compromise
+- **Likelihood**: High
+- **Mitigation**: Input validation, output encoding, WAF
+
+## Scenario
