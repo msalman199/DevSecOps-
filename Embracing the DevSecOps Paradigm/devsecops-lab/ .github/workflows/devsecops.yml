@@ -1,0 +1,70 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install truffleHog3
+    
+    - name: Secret Scanning
+      run: |
+        trufflehog3 --format json --output secrets-report.json ./ || true
+    
+    - name: Static Code Analysis with SonarQube
+      uses: sonarqube-quality-gate-action@master
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    
+    - name: Dependency Check
+      run: |
+        chmod +x scripts/dependency-check.sh
+        ./scripts/dependency-check.sh
+    
+    - name: Build Docker Image
+      run: |
+        docker build -t devsecops-app:${{ github.sha }} .
+    
+    - name: Terraform Security Scan
+      run: |
+        # Install tfsec
+        curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+        sudo mv tfsec /usr/local/bin/
+        
+        # Run security scan
+        chmod +x scripts/terraform-validate.sh
+        ./scripts/terraform-validate.sh
+    
+    - name: OPA Policy Validation
+      run: |
+        # Install OPA
+        curl -L -o opa https://openpolicyagent.org/downloads/v0.57.0/opa_linux_amd64_static
+        chmod +x opa
+        sudo mv opa /usr/local/bin/
+        
+        # Run policy validation
+        chmod +x scripts/opa-validate.sh
+        ./scripts/opa-validate.sh
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: reports/
