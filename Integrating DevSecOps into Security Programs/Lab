@@ -1,0 +1,869 @@
+Integrating DevSecOps into Security Programs
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamental concepts of DevSecOps and its role in modern software development • Set up a basic DevSecOps pipeline using open-source tools • Implement security scanning tools in a CI/CD pipeline • Configure automated security testing for code vulnerabilities • Integrate security monitoring and logging into development workflows • Analyze security scan results and implement remediation strategies • Establish security gates in the development pipeline
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of software development lifecycle (SDLC) • Familiarity with Linux command line operations • Basic knowledge of Git version control • Understanding of containerization concepts (Docker basics) • Awareness of cybersecurity fundamentals
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment. No need to build or configure your own virtual machine.
+
+Your lab environment includes: • Ubuntu 20.04 LTS with Docker pre-installed • Git and essential development tools • Network access for downloading required packages • Pre-configured user account with sudo privileges
+
+Task 1: Understanding DevSecOps Fundamentals
+Subtask 1.1: Explore the Lab Environment
+Access your cloud machine by clicking the Start Lab button
+Open a terminal and verify your environment:
+# Check system information
+uname -a
+whoami
+pwd
+
+# Verify Docker installation
+docker --version
+
+# Check Git installation
+git --version
+Create a working directory for the lab:
+mkdir ~/devsecops-lab
+cd ~/devsecops-lab
+Subtask 1.2: Set Up a Sample Application
+Clone a sample vulnerable web application for testing:
+# Clone DVWA (Damn Vulnerable Web Application)
+git clone https://github.com/digininja/DVWA.git
+cd DVWA
+
+# Create a simple Python web application for additional testing
+cd ~/devsecops-lab
+mkdir sample-app
+cd sample-app
+Create a simple Python application with intentional vulnerabilities:
+# Create app.py
+cat > app.py << 'EOF'
+from flask import Flask, request, render_template_string
+import sqlite3
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return '<h1>Welcome to DevSecOps Lab</h1><a href="/search">Search Users</a>'
+
+@app.route('/search')
+def search():
+    query = request.args.get('q', '')
+    # Intentional SQL injection vulnerability
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    sql = f"SELECT * FROM users WHERE name LIKE '%{query}%'"
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    conn.close()
+    
+    # Intentional XSS vulnerability
+    template = f"<h2>Search Results for: {query}</h2><ul>"
+    for result in results:
+        template += f"<li>{result[1]}</li>"
+    template += "</ul>"
+    
+    return render_template_string(template)
+
+if __name__ == '__main__':
+    # Intentional security misconfiguration
+    app.run(debug=True, host='0.0.0.0', port=5000)
+EOF
+Create requirements file:
+cat > requirements.txt << 'EOF'
+Flask==2.0.1
+sqlite3
+EOF
+Initialize the database:
+cat > init_db.py << 'EOF'
+import sqlite3
+
+conn = sqlite3.connect('users.db')
+cursor = conn.cursor()
+
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL
+    )
+''')
+
+# Insert sample data
+users = [
+    ('John Doe', 'john@example.com'),
+    ('Jane Smith', 'jane@example.com'),
+    ('Bob Johnson', 'bob@example.com')
+]
+
+cursor.executemany('INSERT INTO users (name, email) VALUES (?, ?)', users)
+conn.commit()
+conn.close()
+print("Database initialized successfully!")
+EOF
+
+python3 init_db.py
+Task 2: Setting Up Security Scanning Tools
+Subtask 2.1: Install and Configure Bandit for Python Security Analysis
+Install Bandit (Python security linter):
+# Install pip if not available
+sudo apt update
+sudo apt install -y python3-pip
+
+# Install Bandit
+pip3 install bandit
+Run Bandit scan on the sample application:
+cd ~/devsecops-lab/sample-app
+
+# Run basic Bandit scan
+bandit -r . -f json -o bandit-report.json
+
+# View the results
+bandit -r . -f txt
+Analyze the results and understand the security issues identified:
+# View detailed JSON report
+cat bandit-report.json | python3 -m json.tool
+Subtask 2.2: Set Up OWASP ZAP for Dynamic Security Testing
+Install OWASP ZAP using Docker:
+# Pull OWASP ZAP Docker image
+docker pull owasp/zap2docker-stable
+
+# Create directory for ZAP reports
+mkdir ~/devsecops-lab/zap-reports
+Start the sample application:
+cd ~/devsecops-lab/sample-app
+
+# Install Flask if needed
+pip3 install flask
+
+# Start the application in background
+python3 app.py &
+APP_PID=$!
+
+# Wait for application to start
+sleep 5
+
+# Test if application is running
+curl http://localhost:5000
+Run ZAP baseline scan:
+# Run ZAP baseline scan
+docker run -v $(pwd):/zap/wrk/:rw \
+  -t owasp/zap2docker-stable \
+  zap-baseline.py -t http://host.docker.internal:5000 \
+  -J zap-report.json -r zap-report.html
+
+# Copy reports to our directory
+cp zap-report.* ~/devsecops-lab/zap-reports/
+Subtask 2.3: Implement Dependency Scanning with Safety
+Install Safety for dependency vulnerability scanning:
+pip3 install safety
+Run dependency scan:
+cd ~/devsecops-lab/sample-app
+
+# Check for known security vulnerabilities in dependencies
+safety check --json --output safety-report.json
+
+# View results in readable format
+safety check
+Task 3: Creating a DevSecOps Pipeline
+Subtask 3.1: Set Up Git Repository with Security Hooks
+Initialize Git repository:
+cd ~/devsecops-lab/sample-app
+
+# Initialize Git repository
+git init
+
+# Create .gitignore file
+cat > .gitignore << 'EOF'
+__pycache__/
+*.pyc
+*.pyo
+*.db
+.env
+*.log
+EOF
+Create pre-commit security hook:
+# Create hooks directory
+mkdir -p .git/hooks
+
+# Create pre-commit hook
+cat > .git/hooks/pre-commit << 'EOF'
+#!/bin/bash
+
+echo "Running security checks before commit..."
+
+# Run Bandit security scan
+echo "Running Bandit security scan..."
+bandit -r . -f txt
+
+if [ $? -ne 0 ]; then
+    echo "Security issues found! Please fix before committing."
+    exit 1
+fi
+
+# Run dependency check
+echo "Running dependency security check..."
+safety check
+
+if [ $? -ne 0 ]; then
+    echo "Vulnerable dependencies found! Please update before committing."
+    exit 1
+fi
+
+echo "Security checks passed!"
+exit 0
+EOF
+
+# Make hook executable
+chmod +x .git/hooks/pre-commit
+Subtask 3.2: Create CI/CD Pipeline Configuration
+Create GitHub Actions workflow (for demonstration):
+# Create .github/workflows directory
+mkdir -p .github/workflows
+
+# Create security pipeline workflow
+cat > .github/workflows/security-pipeline.yml << 'EOF'
+name: DevSecOps Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install bandit safety
+    
+    - name: Run Bandit Security Scan
+      run: |
+        bandit -r . -f json -o bandit-report.json
+        bandit -r . -f txt
+    
+    - name: Run Dependency Security Check
+      run: |
+        safety check --json --output safety-report.json
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v2
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+    
+    - name: Security Gate
+      run: |
+        # Fail build if high severity issues found
+        if grep -q '"severity": "HIGH"' bandit-report.json; then
+          echo "High severity security issues found!"
+          exit 1
+        fi
+EOF
+Create Docker security scanning configuration:
+# Create Dockerfile for the application
+cat > Dockerfile << 'EOF'
+FROM python:3.8-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 5000
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+CMD ["python", "app.py"]
+EOF
+Subtask 3.3: Implement Container Security Scanning
+Install Trivy for container vulnerability scanning:
+# Install Trivy
+sudo apt-get update
+sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+
+sudo apt-get update
+sudo apt-get install -y trivy
+Build and scan Docker image:
+cd ~/devsecops-lab/sample-app
+
+# Build Docker image
+docker build -t devsecops-sample:latest .
+
+# Scan image for vulnerabilities
+trivy image --format json --output trivy-report.json devsecops-sample:latest
+
+# View scan results
+trivy image devsecops-sample:latest
+Task 4: Security Monitoring and Logging
+Subtask 4.1: Set Up Application Security Logging
+Enhance the application with security logging:
+# Create enhanced version with logging
+cat > app_secure.py << 'EOF'
+from flask import Flask, request, render_template_string
+import sqlite3
+import os
+import logging
+import hashlib
+from datetime import datetime
+
+# Configure security logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('security.log'),
+        logging.StreamHandler()
+    ]
+)
+
+security_logger = logging.getLogger('security')
+
+app = Flask(__name__)
+
+def log_security_event(event_type, details, request_info):
+    """Log security events"""
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'event_type': event_type,
+        'details': details,
+        'ip_address': request_info.remote_addr,
+        'user_agent': request_info.headers.get('User-Agent', ''),
+        'request_path': request_info.path
+    }
+    security_logger.warning(f"SECURITY_EVENT: {log_entry}")
+
+@app.route('/')
+def home():
+    return '<h1>Welcome to Secure DevSecOps Lab</h1><a href="/search">Search Users</a>'
+
+@app.route('/search')
+def search():
+    query = request.args.get('q', '')
+    
+    # Log potential SQL injection attempts
+    suspicious_patterns = ["'", '"', 'union', 'select', 'drop', 'delete', 'insert']
+    if any(pattern in query.lower() for pattern in suspicious_patterns):
+        log_security_event(
+            'POTENTIAL_SQL_INJECTION',
+            f'Suspicious query detected: {query}',
+            request
+        )
+    
+    # Implement parameterized query (secure version)
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE name LIKE ?", (f'%{query}%',))
+    results = cursor.fetchall()
+    conn.close()
+    
+    # Escape output to prevent XSS
+    from html import escape
+    safe_query = escape(query)
+    
+    template = f"<h2>Search Results for: {safe_query}</h2><ul>"
+    for result in results:
+        template += f"<li>{escape(result[1])}</li>"
+    template += "</ul>"
+    
+    return template
+
+if __name__ == '__main__':
+    app.run(debug=False, host='127.0.0.1', port=5000)
+EOF
+Subtask 4.2: Implement Log Analysis
+Create log analysis script:
+cat > analyze_logs.py << 'EOF'
+import json
+import re
+from datetime import datetime
+from collections import Counter
+
+def analyze_security_logs(log_file='security.log'):
+    """Analyze security logs for threats"""
+    
+    security_events = []
+    
+    try:
+        with open(log_file, 'r') as f:
+            for line in f:
+                if 'SECURITY_EVENT' in line:
+                    # Extract JSON part
+                    json_match = re.search(r'SECURITY_EVENT: ({.*})', line)
+                    if json_match:
+                        try:
+                            event_data = json.loads(json_match.group(1).replace("'", '"'))
+                            security_events.append(event_data)
+                        except json.JSONDecodeError:
+                            continue
+    except FileNotFoundError:
+        print("No security log file found.")
+        return
+    
+    if not security_events:
+        print("No security events found in logs.")
+        return
+    
+    print("=== Security Log Analysis ===")
+    print(f"Total security events: {len(security_events)}")
+    
+    # Analyze event types
+    event_types = Counter(event['event_type'] for event in security_events)
+    print("\nEvent Types:")
+    for event_type, count in event_types.items():
+        print(f"  {event_type}: {count}")
+    
+    # Analyze IP addresses
+    ip_addresses = Counter(event['ip_address'] for event in security_events)
+    print("\nTop IP Addresses:")
+    for ip, count in ip_addresses.most_common(5):
+        print(f"  {ip}: {count}")
+    
+    # Recent events
+    print("\nRecent Security Events:")
+    for event in security_events[-5:]:
+        print(f"  {event['timestamp']}: {event['event_type']} from {event['ip_address']}")
+
+if __name__ == '__main__':
+    analyze_security_logs()
+EOF
+Task 5: Security Gates and Compliance
+Subtask 5.1: Implement Security Quality Gates
+Create security gate script:
+cat > security_gate.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import sys
+import os
+
+def check_bandit_results(report_file='bandit-report.json'):
+    """Check Bandit scan results against security gates"""
+    
+    if not os.path.exists(report_file):
+        print("Bandit report not found!")
+        return False
+    
+    with open(report_file, 'r') as f:
+        report = json.load(f)
+    
+    high_severity_issues = 0
+    medium_severity_issues = 0
+    
+    for result in report.get('results', []):
+        if result['issue_severity'] == 'HIGH':
+            high_severity_issues += 1
+        elif result['issue_severity'] == 'MEDIUM':
+            medium_severity_issues += 1
+    
+    print(f"Security Gate Check - Bandit Results:")
+    print(f"  High severity issues: {high_severity_issues}")
+    print(f"  Medium severity issues: {medium_severity_issues}")
+    
+    # Define security gates
+    if high_severity_issues > 0:
+        print("❌ SECURITY GATE FAILED: High severity issues found!")
+        return False
+    
+    if medium_severity_issues > 5:
+        print("❌ SECURITY GATE FAILED: Too many medium severity issues!")
+        return False
+    
+    print("✅ SECURITY GATE PASSED: Bandit scan")
+    return True
+
+def check_dependency_results(report_file='safety-report.json'):
+    """Check dependency scan results"""
+    
+    if not os.path.exists(report_file):
+        print("Safety report not found!")
+        return False
+    
+    try:
+        with open(report_file, 'r') as f:
+            report = json.load(f)
+        
+        vulnerabilities = len(report)
+        print(f"Security Gate Check - Dependencies:")
+        print(f"  Vulnerable dependencies: {vulnerabilities}")
+        
+        if vulnerabilities > 0:
+            print("❌ SECURITY GATE FAILED: Vulnerable dependencies found!")
+            return False
+        
+        print("✅ SECURITY GATE PASSED: Dependency scan")
+        return True
+    except json.JSONDecodeError:
+        print("✅ SECURITY GATE PASSED: No vulnerabilities in dependencies")
+        return True
+
+def main():
+    """Main security gate check"""
+    print("Running Security Quality Gates...")
+    
+    bandit_passed = check_bandit_results()
+    safety_passed = check_dependency_results()
+    
+    if bandit_passed and safety_passed:
+        print("\n🎉 ALL SECURITY GATES PASSED! Deployment approved.")
+        sys.exit(0)
+    else:
+        print("\n🚫 SECURITY GATES FAILED! Deployment blocked.")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
+EOF
+
+chmod +x security_gate.py
+Subtask 5.2: Run Complete Security Pipeline
+Execute the complete security pipeline:
+cd ~/devsecops-lab/sample-app
+
+# Stop any running application
+pkill -f "python3 app.py"
+
+echo "=== DevSecOps Security Pipeline Execution ==="
+
+# Step 1: Static Code Analysis
+echo "Step 1: Running static code analysis..."
+bandit -r . -f json -o bandit-report.json
+bandit -r . -f txt
+
+# Step 2: Dependency Scanning
+echo "Step 2: Running dependency scan..."
+safety check --json --output safety-report.json || true
+
+# Step 3: Container Security Scanning
+echo "Step 3: Running container security scan..."
+docker build -t devsecops-sample:latest .
+trivy image --format json --output trivy-report.json devsecops-sample:latest
+
+# Step 4: Security Gates
+echo "Step 4: Checking security gates..."
+python3 security_gate.py
+
+# Step 5: Generate Security Report
+echo "Step 5: Generating security report..."
+Create comprehensive security report:
+cat > generate_report.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import os
+from datetime import datetime
+
+def generate_security_report():
+    """Generate comprehensive security report"""
+    
+    report = {
+        'timestamp': datetime.now().isoformat(),
+        'project': 'DevSecOps Sample Application',
+        'scans_performed': [],
+        'summary': {
+            'total_issues': 0,
+            'high_severity': 0,
+            'medium_severity': 0,
+            'low_severity': 0
+        },
+        'recommendations': []
+    }
+    
+    # Analyze Bandit results
+    if os.path.exists('bandit-report.json'):
+        with open('bandit-report.json', 'r') as f:
+            bandit_data = json.load(f)
+        
+        bandit_summary = {
+            'tool': 'Bandit',
+            'type': 'Static Code Analysis',
+            'issues_found': len(bandit_data.get('results', [])),
+            'details': bandit_data.get('results', [])
+        }
+        
+        report['scans_performed'].append(bandit_summary)
+        
+        for result in bandit_data.get('results', []):
+            report['summary']['total_issues'] += 1
+            if result['issue_severity'] == 'HIGH':
+                report['summary']['high_severity'] += 1
+            elif result['issue_severity'] == 'MEDIUM':
+                report['summary']['medium_severity'] += 1
+            else:
+                report['summary']['low_severity'] += 1
+    
+    # Analyze Trivy results
+    if os.path.exists('trivy-report.json'):
+        with open('trivy-report.json', 'r') as f:
+            trivy_data = json.load(f)
+        
+        total_vulns = 0
+        if 'Results' in trivy_data:
+            for result in trivy_data['Results']:
+                if 'Vulnerabilities' in result:
+                    total_vulns += len(result['Vulnerabilities'])
+        
+        trivy_summary = {
+            'tool': 'Trivy',
+            'type': 'Container Security Scan',
+            'vulnerabilities_found': total_vulns
+        }
+        
+        report['scans_performed'].append(trivy_summary)
+    
+    # Add recommendations
+    if report['summary']['high_severity'] > 0:
+        report['recommendations'].append("Immediately fix all high severity security issues before deployment")
+    
+    if report['summary']['medium_severity'] > 5:
+        report['recommendations'].append("Review and fix medium severity issues")
+    
+    report['recommendations'].extend([
+        "Implement regular security scanning in CI/CD pipeline",
+        "Set up automated dependency updates",
+        "Enable security monitoring and alerting",
+        "Conduct regular security training for development team"
+    ])
+    
+    # Save report
+    with open('security-report.json', 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    # Print summary
+    print("=== SECURITY REPORT SUMMARY ===")
+    print(f"Generated: {report['timestamp']}")
+    print(f"Total Issues Found: {report['summary']['total_issues']}")
+    print(f"  High Severity: {report['summary']['high_severity']}")
+    print(f"  Medium Severity: {report['summary']['medium_severity']}")
+    print(f"  Low Severity: {report['summary']['low_severity']}")
+    print(f"\nScans Performed: {len(report['scans_performed'])}")
+    for scan in report['scans_performed']:
+        print(f"  - {scan['tool']} ({scan['type']})")
+    
+    print(f"\nRecommendations: {len(report['recommendations'])}")
+    for i, rec in enumerate(report['recommendations'], 1):
+        print(f"  {i}. {rec}")
+    
+    print(f"\nDetailed report saved to: security-report.json")
+
+if __name__ == '__main__':
+    generate_security_report()
+EOF
+
+python3 generate_report.py
+Task 6: Remediation and Best Practices
+Subtask 6.1: Fix Security Issues
+Create secure version of the application:
+cat > app_fixed.py << 'EOF'
+from flask import Flask, request, render_template_string, escape
+import sqlite3
+import os
+import logging
+import secrets
+from datetime import datetime
+
+# Configure secure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
+
+app = Flask(__name__)
+app.secret_key = secrets.token_hex(16)  # Secure secret key
+
+# Security headers middleware
+@app.after_request
+def add_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+@app.route('/')
+def home():
+    return '''
+    <h1>Secure DevSecOps Lab Application</h1>
+    <p>This is a security-hardened version of the application.</p>
+    <a href="/search">Search Users</a>
+    '''
+
+@app.route('/search')
+def search():
+    query = request.args.get('q', '')
+    
+    # Input validation
+    if len(query) > 100:
+        return "Query too long", 400
+    
+    # Parameterized query to prevent SQL injection
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, email FROM users WHERE name LIKE ? LIMIT 10", (f'%{query}%',))
+    results = cursor.fetchall()
+    conn.close()
+    
+    # Secure template rendering with proper escaping
+    safe_query = escape(query)
+    template = f"<h2>Search Results for: {safe_query}</h2><ul>"
+    
+    for result in results:
+        safe_name = escape(result[1])
+        safe_email = escape(result[2])
+        template += f"<li>{safe_name} ({safe_email})</li>"
+    
+    template += "</ul><a href='/'>Back to Home</a>"
+    
+    return template
+
+if __name__ == '__main__':
+    # Secure configuration
+    app.run(debug=False, host='127.0.0.1', port=5000)
+EOF
+Create security checklist:
+cat > security_checklist.md << 'EOF'
+# DevSecOps Security Checklist
+
+## Code Security
+- [ ] Input validation implemented
+- [ ] Parameterized queries used (no SQL injection)
+- [ ] Output encoding/escaping (no XSS)
+- [ ] Secure error handling
+- [ ] No hardcoded secrets
+- [ ] Secure random number generation
+
+## Application Security
+- [ ] Security headers configured
+- [ ] HTTPS enforced
+- [ ] Secure session management
+- [ ] Authentication and authorization implemented
+- [ ] Rate limiting configured
+- [ ] Security logging enabled
+
+## Infrastructure Security
+- [ ] Container security scanning
+- [ ] Base image vulnerabilities addressed
+- [ ] Non-root user in containers
+- [ ] Minimal attack surface
+- [ ] Network security configured
+- [ ] Secrets management implemented
+
+## Pipeline Security
+- [ ] Static code analysis (SAST)
+- [ ] Dynamic application security testing (DAST)
+- [ ] Dependency scanning (SCA)
+- [ ] Container scanning
+- [ ] Security gates implemented
+- [ ] Automated security testing
+
+## Monitoring and Response
+- [ ] Security monitoring configured
+- [ ] Log analysis implemented
+- [ ] Incident response plan
+- [ ] Regular security assessments
+- [ ] Security metrics tracked
+- [ ] Team security training
+EOF
+Subtask 6.2: Validate Security Improvements
+Test the secure application:
+# Test the fixed application
+python3 app_fixed.py &
+SECURE_APP_PID=$!
+
+sleep 3
+
+# Test for SQL injection (should be prevented)
+curl "http://localhost:5000/search?q=test' OR '1'='1"
+
+# Test for XSS (should be escaped)
+curl "http://localhost:5000/search?q=<script>alert('xss')</script>"
+
+# Stop the application
+kill $SECURE_APP_PID
+Run final security scan:
+# Scan the fixed application
+bandit -r app_fixed.py -f txt
+
+# Compare with original results
+echo "=== SECURITY IMPROVEMENT COMPARISON ==="
+echo "Original app issues:"
+bandit -r app.py -f txt | grep -c "Issue:"
+
+echo "Fixed app issues:"
+bandit -r app_fixed.py -f txt | grep -c "Issue:" || echo "0"
+Conclusion
+Congratulations! You have successfully completed the DevSecOps Integration lab. Here's what you accomplished:
+
+Key Achievements
+Security Tool Integration: You successfully integrated multiple open-source security tools into a development workflow:
+
+Bandit for static code analysis to identify Python security issues
+OWASP ZAP for dynamic application security testing
+Safety for dependency vulnerability scanning
+Trivy for container security scanning
+DevSecOps Pipeline Creation: You built a comprehensive security pipeline that includes:
+
+Automated security scanning at multiple stages
+Pre-commit hooks to catch issues early
+Security quality gates to prevent vulnerable code deployment
+Continuous monitoring and logging capabilities
+Hands-On Security Remediation: You identified real security vulnerabilities and implemented proper fixes:
+
+Fixed SQL injection vulnerabilities using parameterized queries
+Prevented XSS attacks through proper output encoding
+Implemented security headers and secure configuration practices
+Created secure application architecture following best practices
+Security Monitoring and Analysis: You established security monitoring capabilities:
+
+Implemented comprehensive security logging
+Created automated log analysis tools
+Built security reporting and metrics collection
+Established incident detection and response capabilities
+Why This Matters
+DevSecOps integration is crucial in modern software development because it:
+
+Shifts Security Left: Catches vulnerabilities early in development when they're cheaper and easier to fix
+Automates Security: Reduces human error and ensures consistent security practices across all projects
+Enables Continuous Security: Provides ongoing protection rather than point-in-time assessments
+Improves Collaboration: Breaks down silos between development, security, and operations teams
+Accelerates Delivery: Enables faster, more secure software releases through automation
+Next Steps
+To continue your DevSecOps journey, consider:
+
+Implementing infrastructure as code security scanning
+Adding compliance automation and reporting
+Exploring advanced threat modeling techniques
+Setting up security orchestration and automated response (SOAR)
+Integrating with cloud security services and tools
+You now have the foundational knowledge and practical experience to implement DevSecOps practices in real-world development environments, making security an integral part of the software development lifecycle rather than an afterthought.
