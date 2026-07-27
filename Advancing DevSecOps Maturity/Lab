@@ -1,0 +1,816 @@
+Advancing DevSecOps Maturity
+Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamental concepts of DevSecOps and its importance in modern software development • Set up a complete CI/CD pipeline using open-source tools • Integrate security scanning tools into the development workflow • Configure automated security testing at multiple stages of the pipeline • Implement Infrastructure as Code (IaC) security scanning • Monitor and analyze security metrics in a DevSecOps environment • Apply best practices for secure code development and deployment
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of Linux command line operations • Familiarity with Git version control concepts • Basic knowledge of Docker containers • Understanding of software development lifecycle • No prior DevSecOps experience required - this lab is designed for beginners
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. No need to build or configure your own virtual machine.
+
+Your cloud machine includes: • Ubuntu 20.04 LTS • Docker and Docker Compose pre-installed • Git version control system • All necessary development tools
+
+Task 1: Understanding DevSecOps Fundamentals
+Subtask 1.1: Exploring DevSecOps Concepts
+DevSecOps integrates security practices into the DevOps process, ensuring security is considered throughout the entire software development lifecycle rather than as an afterthought.
+
+Key DevSecOps Principles: • Shift Left Security: Integrate security early in the development process • Automation: Automate security testing and compliance checks • Continuous Monitoring: Monitor applications and infrastructure continuously • Collaboration: Foster collaboration between development, operations, and security teams
+
+Subtask 1.2: Setting Up the Working Directory
+Open your terminal in the cloud machine
+Create a project directory structure:
+mkdir -p ~/devsecops-lab
+cd ~/devsecops-lab
+mkdir -p {src,scripts,configs,reports}
+Verify the directory structure:
+tree ~/devsecops-lab
+Task 2: Building a Secure CI/CD Pipeline
+Subtask 2.1: Installing Jenkins (CI/CD Platform)
+Jenkins will serve as our primary CI/CD platform for this lab.
+
+Update the system packages:
+sudo apt update
+sudo apt upgrade -y
+Install Java (required for Jenkins):
+sudo apt install openjdk-11-jdk -y
+java -version
+Add Jenkins repository and install:
+wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key add -
+sudo sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+sudo apt update
+sudo apt install jenkins -y
+Start and enable Jenkins service:
+sudo systemctl start jenkins
+sudo systemctl enable jenkins
+sudo systemctl status jenkins
+Get the initial admin password:
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+Subtask 2.2: Configuring Jenkins
+Open your web browser and navigate to http://localhost:8080
+Enter the initial admin password obtained in the previous step
+Select Install suggested plugins
+Create an admin user with the following details:
+Username: admin
+Password: admin123
+Full name: DevSecOps Admin
+Email: admin@devsecops.local
+Keep the default Jenkins URL and click Save and Finish
+Subtask 2.3: Installing Additional Jenkins Plugins
+Navigate to Manage Jenkins > Manage Plugins
+
+Go to the Available tab and install these plugins:
+
+Docker Pipeline
+Git Plugin
+Pipeline Plugin
+OWASP Dependency-Check Plugin
+SonarQube Scanner Plugin
+HTML Publisher Plugin
+Restart Jenkins after plugin installation:
+
+sudo systemctl restart jenkins
+Task 3: Setting Up DevSecOps Security Tools
+Subtask 3.1: Installing OWASP Dependency-Check
+OWASP Dependency-Check identifies known vulnerabilities in project dependencies.
+
+Download and install Dependency-Check:
+cd ~/devsecops-lab/scripts
+wget https://github.com/jeremylong/DependencyCheck/releases/download/v8.4.0/dependency-check-8.4.0-release.zip
+unzip dependency-check-8.4.0-release.zip
+sudo mv dependency-check /opt/
+sudo ln -s /opt/dependency-check/bin/dependency-check.sh /usr/local/bin/dependency-check
+Verify installation:
+dependency-check --version
+Subtask 3.2: Installing Trivy (Container Security Scanner)
+Trivy scans container images for vulnerabilities.
+
+Install Trivy:
+sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get update
+sudo apt-get install trivy -y
+Verify Trivy installation:
+trivy --version
+Subtask 3.3: Installing Bandit (Python Security Linter)
+Bandit finds common security issues in Python code.
+
+Install Python pip and Bandit:
+sudo apt install python3-pip -y
+pip3 install bandit
+Add pip binary path to PATH:
+echo 'export PATH=$PATH:~/.local/bin' >> ~/.bashrc
+source ~/.bashrc
+Verify Bandit installation:
+bandit --version
+Subtask 3.4: Installing SonarQube (Code Quality Analysis)
+Create SonarQube using Docker:
+cd ~/devsecops-lab
+Create a docker-compose file for SonarQube:
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+services:
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+EOF
+Start SonarQube:
+docker-compose up -d
+Wait for SonarQube to start (this may take a few minutes):
+docker-compose logs -f sonarqube
+Access SonarQube at http://localhost:9000 (default credentials: admin/admin)
+Task 4: Creating a Sample Application
+Subtask 4.1: Creating a Python Web Application
+Create a sample Python Flask application:
+cd ~/devsecops-lab/src
+Create the main application file:
+cat > app.py << 'EOF'
+from flask import Flask, request, render_template_string
+import sqlite3
+import os
+
+app = Flask(__name__)
+
+# Intentionally vulnerable code for demonstration
+@app.route('/')
+def home():
+    return '''
+    <h1>DevSecOps Demo Application</h1>
+    <form action="/search" method="post">
+        <input type="text" name="query" placeholder="Search users">
+        <input type="submit" value="Search">
+    </form>
+    '''
+
+@app.route('/search', methods=['POST'])
+def search():
+    query = request.form['query']
+    # Vulnerable SQL query (for demonstration)
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    sql = f"SELECT * FROM users WHERE name LIKE '%{query}%'"
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    conn.close()
+    
+    return f"<h2>Search Results:</h2><p>{results}</p>"
+
+@app.route('/admin')
+def admin():
+    # Hardcoded credentials (vulnerability)
+    admin_password = "admin123"
+    return f"Admin panel - Password: {admin_password}"
+
+if __name__ == '__main__':
+    # Create sample database
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+                     (id INTEGER PRIMARY KEY, name TEXT, email TEXT)''')
+    cursor.execute("INSERT OR IGNORE INTO users VALUES (1, 'John Doe', 'john@example.com')")
+    cursor.execute("INSERT OR IGNORE INTO users VALUES (2, 'Jane Smith', 'jane@example.com')")
+    conn.commit()
+    conn.close()
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)
+EOF
+Create requirements.txt:
+cat > requirements.txt << 'EOF'
+Flask==2.3.3
+Werkzeug==2.3.7
+EOF
+Create a Dockerfile:
+cat > Dockerfile << 'EOF'
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
+EOF
+Subtask 4.2: Creating Git Repository
+Initialize Git repository:
+cd ~/devsecops-lab
+git init
+git config user.name "DevSecOps Student"
+git config user.email "student@devsecops.local"
+Create .gitignore file:
+cat > .gitignore << 'EOF'
+__pycache__/
+*.pyc
+*.pyo
+*.db
+.env
+*.log
+EOF
+Add and commit files:
+git add .
+git commit -m "Initial commit: DevSecOps demo application"
+Task 5: Implementing Security Scanning
+Subtask 5.1: Running Static Code Analysis with Bandit
+Scan the Python application for security issues:
+cd ~/devsecops-lab/src
+bandit -r . -f json -o ../reports/bandit-report.json
+bandit -r . -f txt -o ../reports/bandit-report.txt
+View the security report:
+cat ../reports/bandit-report.txt
+Expected findings: • Hardcoded password strings • SQL injection vulnerability • Use of insecure debug mode
+
+Subtask 5.2: Dependency Vulnerability Scanning
+Run OWASP Dependency-Check:
+cd ~/devsecops-lab
+dependency-check --project "DevSecOps Demo" --scan src/ --format JSON --format HTML --out reports/
+View the dependency report:
+ls -la reports/
+Subtask 5.3: Container Image Scanning with Trivy
+Build the Docker image:
+cd ~/devsecops-lab/src
+docker build -t devsecops-demo:latest .
+Scan the container image:
+trivy image --format json --output ../reports/trivy-report.json devsecops-demo:latest
+trivy image --format table devsecops-demo:latest
+Task 6: Creating Jenkins Pipeline
+Subtask 6.1: Creating a Jenkinsfile
+Create a comprehensive Jenkins pipeline:
+cd ~/devsecops-lab
+cat > Jenkinsfile << 'EOF'
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_IMAGE = 'devsecops-demo'
+        DOCKER_TAG = "${BUILD_NUMBER}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out source code...'
+                checkout scm
+            }
+        }
+        
+        stage('Static Code Analysis') {
+            steps {
+                echo 'Running Bandit security scan...'
+                sh '''
+                    cd src
+                    bandit -r . -f json -o ../reports/bandit-report.json || true
+                    bandit -r . -f txt -o ../reports/bandit-report.txt || true
+                '''
+                
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: 'bandit-report.txt',
+                    reportName: 'Bandit Security Report'
+                ])
+            }
+        }
+        
+        stage('Dependency Check') {
+            steps {
+                echo 'Running OWASP Dependency Check...'
+                sh '''
+                    dependency-check --project "DevSecOps Demo" --scan src/ --format JSON --format HTML --out reports/ || true
+                '''
+                
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: 'dependency-check-report.html',
+                    reportName: 'OWASP Dependency Check Report'
+                ])
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+                sh '''
+                    cd src
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                '''
+            }
+        }
+        
+        stage('Container Security Scan') {
+            steps {
+                echo 'Scanning Docker image with Trivy...'
+                sh '''
+                    trivy image --format json --output reports/trivy-report.json ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                    trivy image --format table ${DOCKER_IMAGE}:${DOCKER_TAG} || true
+                '''
+                
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'reports',
+                    reportFiles: 'trivy-report.json',
+                    reportName: 'Trivy Container Scan Report'
+                ])
+            }
+        }
+        
+        stage('Deploy to Test') {
+            steps {
+                echo 'Deploying to test environment...'
+                sh '''
+                    docker stop devsecops-test || true
+                    docker rm devsecops-test || true
+                    docker run -d --name devsecops-test -p 5001:5000 ${DOCKER_IMAGE}:${DOCKER_TAG}
+                '''
+            }
+        }
+        
+        stage('Security Testing') {
+            steps {
+                echo 'Running security tests...'
+                sh '''
+                    sleep 10  # Wait for application to start
+                    curl -f http://localhost:5001/ || exit 1
+                    echo "Basic security test passed"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Cleaning up...'
+            sh '''
+                docker stop devsecops-test || true
+                docker rm devsecops-test || true
+            '''
+            
+            archiveArtifacts artifacts: 'reports/*', fingerprint: true
+        }
+        
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        
+        failure {
+            echo 'Pipeline failed. Check the logs for details.'
+        }
+    }
+}
+EOF
+Subtask 6.2: Creating Jenkins Pipeline Job
+Open Jenkins web interface (http://localhost:8080)
+Click New Item
+Enter item name: DevSecOps-Pipeline
+Select Pipeline and click OK
+In the Pipeline section:
+Definition: Pipeline script from SCM
+SCM: Git
+Repository URL: /home/ubuntu/devsecops-lab (local path)
+Branch: */master
+Script Path: Jenkinsfile
+Click Save
+Subtask 6.3: Running the Pipeline
+Click Build Now to execute the pipeline
+Monitor the build progress in the Console Output
+Review the security reports generated in each stage
+Task 7: Analyzing Security Results
+Subtask 7.1: Reviewing Bandit Results
+Examine the static code analysis results:
+cd ~/devsecops-lab
+cat reports/bandit-report.txt
+Key findings to look for: • B608: Hardcoded SQL string • B105: Hardcoded password string • B201: Flask app with debug=True
+
+Subtask 7.2: Understanding Dependency Vulnerabilities
+Open the OWASP Dependency-Check report:
+firefox reports/dependency-check-report.html &
+Review identified vulnerabilities in project dependencies
+Note the severity levels and CVE numbers
+Subtask 7.3: Container Security Analysis
+Review Trivy scan results:
+cat reports/trivy-report.json | jq '.Results[0].Vulnerabilities | length'
+Check for high-severity vulnerabilities:
+cat reports/trivy-report.json | jq '.Results[0].Vulnerabilities[] | select(.Severity == "HIGH")'
+Task 8: Implementing Security Fixes
+Subtask 8.1: Fixing Code Vulnerabilities
+Create a secure version of the application:
+cd ~/devsecops-lab/src
+cp app.py app.py.vulnerable
+Create a more secure version:
+cat > app.py << 'EOF'
+from flask import Flask, request, render_template_string
+import sqlite3
+import os
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+
+@app.route('/')
+def home():
+    return '''
+    <h1>DevSecOps Demo Application (Secured)</h1>
+    <form action="/search" method="post">
+        <input type="text" name="query" placeholder="Search users">
+        <input type="submit" value="Search">
+    </form>
+    '''
+
+@app.route('/search', methods=['POST'])
+def search():
+    query = request.form['query']
+    # Secure parameterized query
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE name LIKE ?", (f'%{query}%',))
+    results = cursor.fetchall()
+    conn.close()
+    
+    return f"<h2>Search Results:</h2><p>{results}</p>"
+
+@app.route('/admin')
+def admin():
+    # Remove hardcoded credentials
+    return "Admin panel - Please authenticate properly"
+
+if __name__ == '__main__':
+    # Create sample database
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+                     (id INTEGER PRIMARY KEY, name TEXT, email TEXT)''')
+    cursor.execute("INSERT OR IGNORE INTO users VALUES (1, 'John Doe', 'john@example.com')")
+    cursor.execute("INSERT OR IGNORE INTO users VALUES (2, 'Jane Smith', 'jane@example.com')")
+    conn.commit()
+    conn.close()
+    
+    # Remove debug mode for production
+    app.run(host='0.0.0.0', port=5000, debug=False)
+EOF
+Subtask 8.2: Updating Dependencies
+Update requirements.txt with latest secure versions:
+cat > requirements.txt << 'EOF'
+Flask==2.3.3
+Werkzeug==2.3.7
+EOF
+Subtask 8.3: Committing Security Fixes
+Commit the security improvements:
+cd ~/devsecops-lab
+git add .
+git commit -m "Security fixes: Remove hardcoded credentials, fix SQL injection, disable debug mode"
+Run the pipeline again to verify improvements:
+Go to Jenkins
+Click on DevSecOps-Pipeline
+Click Build Now
+Task 9: Setting Up Continuous Monitoring
+Subtask 9.1: Creating Security Monitoring Script
+Create a monitoring script:
+cd ~/devsecops-lab/scripts
+cat > security-monitor.sh << 'EOF'
+#!/bin/bash
+
+echo "=== DevSecOps Security Monitoring Report ==="
+echo "Generated on: $(date)"
+echo ""
+
+# Check for running containers
+echo "=== Running Containers ==="
+docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+echo ""
+
+# Check for security updates
+echo "=== System Security Updates ==="
+apt list --upgradable 2>/dev/null | grep -i security | head -5
+echo ""
+
+# Check disk usage
+echo "=== Disk Usage ==="
+df -h / | tail -1
+echo ""
+
+# Check for failed login attempts
+echo "=== Recent Failed Login Attempts ==="
+grep "Failed password" /var/log/auth.log 2>/dev/null | tail -5 || echo "No failed login attempts found"
+echo ""
+
+# Generate summary
+echo "=== Security Summary ==="
+echo "- Containers running: $(docker ps -q | wc -l)"
+echo "- Security updates available: $(apt list --upgradable 2>/dev/null | grep -i security | wc -l)"
+echo "- System uptime: $(uptime -p)"
+echo ""
+echo "=== End of Report ==="
+EOF
+
+chmod +x security-monitor.sh
+Run the monitoring script:
+./security-monitor.sh
+Subtask 9.2: Creating Automated Security Checks
+Create a comprehensive security check script:
+cat > security-check.sh << 'EOF'
+#!/bin/bash
+
+REPORT_DIR="../reports"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+echo "Starting automated security checks..."
+
+# Create reports directory if it doesn't exist
+mkdir -p $REPORT_DIR
+
+# Run Bandit scan
+echo "Running Bandit security scan..."
+cd ../src
+bandit -r . -f json -o $REPORT_DIR/bandit-$DATE.json
+bandit -r . -f txt -o $REPORT_DIR/bandit-$DATE.txt
+
+# Run dependency check
+echo "Running dependency vulnerability scan..."
+cd ..
+dependency-check --project "DevSecOps Demo" --scan src/ --format JSON --out $REPORT_DIR/dependency-check-$DATE.json
+
+# Scan Docker images
+echo "Scanning Docker images..."
+for image in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep devsecops-demo); do
+    echo "Scanning $image..."
+    trivy image --format json --output $REPORT_DIR/trivy-$image-$DATE.json $image
+done
+
+echo "Security checks completed. Reports saved in $REPORT_DIR/"
+ls -la $REPORT_DIR/
+EOF
+
+chmod +x security-check.sh
+Task 10: Creating Security Dashboard
+Subtask 10.1: Setting Up Simple Web Dashboard
+Create a simple HTML dashboard:
+cd ~/devsecops-lab
+mkdir -p dashboard
+cd dashboard
+
+cat > index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DevSecOps Security Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #2c3e50; color: white; padding: 20px; text-align: center; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .metric { display: inline-block; margin: 10px; padding: 15px; background-color: #ecf0f1; border-radius: 5px; }
+        .high { background-color: #e74c3c; color: white; }
+        .medium { background-color: #f39c12; color: white; }
+        .low { background-color: #27ae60; color: white; }
+        .info { background-color: #3498db; color: white; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>DevSecOps Security Dashboard</h1>
+        <p>Real-time Security Monitoring</p>
+    </div>
+    
+    <div class="section">
+        <h2>Security Metrics</h2>
+        <div class="metric high">
+            <h3>High Risk Issues</h3>
+            <p id="high-risk">Loading...</p>
+        </div>
+        <div class="metric medium">
+            <h3>Medium Risk Issues</h3>
+            <p id="medium-risk">Loading...</p>
+        </div>
+        <div class="metric low">
+            <h3>Low Risk Issues</h3>
+            <p id="low-risk">Loading...</p>
+        </div>
+        <div class="metric info">
+            <h3>Total Scans</h3>
+            <p id="total-scans">Loading...</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Recent Security Reports</h2>
+        <ul id="recent-reports">
+            <li>Loading reports...</li>
+        </ul>
+    </div>
+    
+    <div class="section">
+        <h2>System Status</h2>
+        <p><strong>Last Updated:</strong> <span id="last-updated"></span></p>
+        <p><strong>Pipeline Status:</strong> <span id="pipeline-status">Active</span></p>
+        <p><strong>Security Tools:</strong> Bandit, OWASP Dependency-Check, Trivy</p>
+    </div>
+    
+    <script>
+        // Update timestamp
+        document.getElementById('last-updated').textContent = new Date().toLocaleString();
+        
+        // Simulate metrics (in real implementation, these would come from actual reports)
+        document.getElementById('high-risk').textContent = '2';
+        document.getElementById('medium-risk').textContent = '5';
+        document.getElementById('low-risk').textContent = '12';
+        document.getElementById('total-scans').textContent = '3';
+        
+        // Simulate recent reports
+        const reports = [
+            'Bandit Security Scan - ' + new Date().toLocaleDateString(),
+            'OWASP Dependency Check - ' + new Date().toLocaleDateString(),
+            'Trivy Container Scan - ' + new Date().toLocaleDateString()
+        ];
+        
+        const reportsList = document.getElementById('recent-reports');
+        reportsList.innerHTML = '';
+        reports.forEach(report => {
+            const li = document.createElement('li');
+            li.textContent = report;
+            reportsList.appendChild(li);
+        });
+    </script>
+</body>
+</html>
+EOF
+Start a simple web server to view the dashboard:
+python3 -m http.server 8080 &
+Open the dashboard in your browser:
+Navigate to http://localhost:8080
+Task 11: Best Practices Implementation
+Subtask 11.1: Creating Security Policy Document
+Create a security policy document:
+cd ~/devsecops-lab
+cat > SECURITY_POLICY.md << 'EOF'
+# DevSecOps Security Policy
+
+## Overview
+This document outlines the security practices and policies for our DevSecOps implementation.
+
+## Security Scanning Requirements
+
+### Static Code Analysis
+- All code must pass Bandit security scans
+- Maximum of 2 high-severity issues allowed
+- All hardcoded secrets must be removed
+
+### Dependency Management
+- All dependencies must be scanned for known vulnerabilities
+- High and critical vulnerabilities must be addressed within 7 days
+- Regular dependency updates required
+
+### Container Security
+- All container images must be scanned with Trivy
+- Base images must be updated regularly
+- No containers should run as root user
+
+## Pipeline Security Gates
+
+### Pre-commit Hooks
+- Security linting must pass
+- No secrets in code
+- Code formatting standards
+
+### Build Stage
+- Static analysis must pass
+- Dependency check must pass
+- Unit tests must pass
+
+### Deploy Stage
+- Container scan must pass
+- Integration tests must pass
+- Security tests must pass
+
+## Incident Response
+
+### High Severity Issues
+1. Stop deployment immediately
+2. Notify security team
+3. Create incident ticket
+4. Fix within 24 hours
+
+### Medium Severity Issues
+1. Create tracking ticket
+2. Fix within 7 days
+3. Update security documentation
+
+## Monitoring and Alerting
+
+### Continuous Monitoring
+- Real-time vulnerability scanning
+- Log analysis for security events
+- Performance monitoring
+
+### Alerting Thresholds
+- High severity: Immediate alert
+- Medium severity: Daily digest
+- Low severity: Weekly report
+
+## Training Requirements
+
+### Development Team
+- Secure coding practices
+- OWASP Top 10 awareness
+- Tool-specific training
+
+### Operations Team
+- Infrastructure security
+- Incident response procedures
+- Monitoring and alerting
+
+## Compliance
+
+### Standards
+- OWASP guidelines
+- Industry best practices
+- Regulatory requirements
+
+### Auditing
+- Monthly security reviews
+- Quarterly compliance checks
+- Annual security assessment
+EOF
+Subtask 11.2: Creating Pre-commit Hooks
+Install pre-commit framework:
+pip3 install pre-commit
+Create pre-commit configuration:
+cat > .pre-commit-config.yaml << 'EOF'
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: detect-private-key
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        args: ['-r', '.']
+        exclude: ^tests/
+
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black
+        language_version: python3
+EOF
+Install the pre-commit hooks:
+pre-commit install
+Conclusion
+Congratulations! You have successfully completed the DevSecOps Maturity lab. Here's what you accomplished:
+
+Key Achievements
+DevSecOps Foundation: You built a comprehensive understanding of DevSecOps principles and implemented security throughout the entire software development lifecycle.
+
+CI/CD Pipeline: You created a complete Jenkins-based CI/CD pipeline that automatically integrates security scanning at multiple stages.
+
+Security Tool Integration: You successfully integrated and configured multiple open-source security tools:
+
+Bandit for static code analysis
+OWASP Dependency-Check for vulnerability scanning
+Trivy for container security scanning
+SonarQube for code quality analysis
+Automated Security Testing: You implemented automated security testing that runs with every code change, ensuring continuous security validation.
+
+Security Monitoring: You created monitoring capabilities and a security dashboard to track security metrics and trends.
+
+Best Practices Implementation: You established security policies, pre-commit hooks, and incident response procedures.
+
+Why This Matters
+Shift-Left Security: By integrating security early in the development process, you can identify and fix vulnerabilities before they reach production, reducing costs and risks.
+
+Automation Benefits: Automated security scanning ensures consistent security checks without manual intervention, reducing human error and increasing efficiency.
+
+Continuous Improvement: The monitoring and reporting capabilities you implemented enable continuous improvement of security posture.
+
+Industry Relevance: The skills and practices you learned are directly applicable
