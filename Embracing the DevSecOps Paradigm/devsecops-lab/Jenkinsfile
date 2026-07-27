@@ -1,0 +1,163 @@
+pipeline {
+    agent any
+    
+    environment {
+        VAULT_ADDR = 'http://localhost:8200'
+        VAULT_TOKEN = credentials('vault-token')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Security Scan - Secrets') {
+            steps {
+                script {
+                    sh '''
+                        echo "Scanning for secrets in code..."
+                        # Install truffleHog for secret scanning
+                        pip3 install truffleHog3
+                        trufflehog3 --format json --output secrets-report.json ./ || true
+                    '''
+                }
+            }
+        }
+        
+        stage('Static Code Analysis') {
+            parallel {
+                stage('SonarQube Analysis') {
+                    steps {
+                        script {
+                            sh '''
+                                # Run SonarQube analysis
+                                docker run --rm \
+                                    -v $(pwd):/usr/src \
+                                    -w /usr/src \
+                                    --network host \
+                                    sonarsource/sonar-scanner-cli \
+                                    -Dsonar.host.url=http://localhost:9000 \
+                                    -Dsonar.login=admin \
+                                    -Dsonar.password=admin
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Dependency Check') {
+                    steps {
+                        script {
+                            sh './scripts/dependency-check.sh'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                script {
+                    sh '''
+                        echo "Building application..."
+                        docker build -t devsecops-app:${BUILD_NUMBER} .
+                        docker tag devsecops-app:${BUILD_NUMBER} devsecops-app:latest
+                    '''
+                }
+            }
+        }
+        
+        stage('Infrastructure Validation') {
+            steps {
+                script {
+                    sh './scripts/terraform-validate.sh'
+                }
+            }
+        }
+        
+        stage('Policy Validation') {
+            steps {
+                script {
+                    sh './scripts/opa-validate.sh'
+                }
+            }
+        }
+        
+        stage('Deploy to Test Environment') {
+            steps {
+                script {
+                    sh '''
+                        cd infrastructure/terraform
+                        terraform apply -auto-approve tfplan
+                    '''
+                }
+            }
+        }
+        
+        stage('Dynamic Security Testing') {
+            steps {
+                script {
+                    sh './scripts/zap-scan.sh'
+                }
+            }
+        }
+        
+        stage('Security Report') {
+            steps {
+                script {
+                    sh '''
+                        echo "Generating security report..."
+                        mkdir -p reports/consolidated
+                        
+                        # Create consolidated security report
+                        cat > reports/consolidated/security-summary.md << 'REPORT_EOF'
+# DevSecOps Security Report
+
+## Scan Results Summary
+
+### 1. Secret Scanning
+- Tool: TruffleHog
+- Report: secrets-report.json
+
+### 2. Static Code Analysis
+- Tool: SonarQube
+- Dashboard: http://localhost:9000
+
+### 3. Dependency Scanning
+- Tool: OWASP Dependency Check
+- Report: reports/dependency-check/
+
+### 4. Infrastructure Security
+- Tool: tfsec
+- Report: infrastructure/terraform/tfsec-report.json
+
+### 5. Dynamic Security Testing
+- Tool: OWASP ZAP
+- Report: reports/zap/
+
+### 6. Policy Compliance
+- Tool: Open Policy Agent
+- Policies: policies/
+
+REPORT_EOF
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'reports',
+                reportFiles: '**/*.html',
+                reportName: 'Security Reports'
+            ])
+        }
+    }
+}
