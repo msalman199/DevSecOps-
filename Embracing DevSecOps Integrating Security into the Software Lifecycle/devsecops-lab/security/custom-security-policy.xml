@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xccdf:Benchmark xmlns:xccdf="http://checklists.nist.gov/xccdf/1.2" id="custom-devsecops-policy">
+    <xccdf:status>accepted</xccdf:status>
+    <xccdf:title>DevSecOps Custom Security Policy</xccdf:title>
+    <xccdf:description>Custom security policy for DevSecOps lab environment</xccdf:description>
+    <xccdf:version>1.0</xccdf:version>
+    
+    <xccdf:Profile id="devsecops-profile">
+        <xccdf:title>DevSecOps Security Profile</xccdf:title>
+        <xccdf:description>Security profile for development environments</xccdf:description>
+        <xccdf:select idref="rule-password-complexity" selected="true"/>
+        <xccdf:select idref="rule-ssh-security" selected="true"/>
+        <xccdf:select idref="rule-firewall-enabled" selected="true"/>
+    </xccdf:Profile>
+    
+    <xccdf:Rule id="rule-password-complexity">
+        <xccdf:title>Password Complexity Requirements</xccdf:title>
+        <xccdf:description>Ensure password complexity requirements are met</xccdf:description>
+        <xccdf:check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+            <xccdf:check-content-ref href="password-complexity.xml"/>
+        </xccdf:check>
+    </xccdf:Rule>
+    
+    <xccdf:Rule id="rule-ssh-security">
+        <xccdf:title>SSH Security Configuration</xccdf:title>
+        <xccdf:description>Ensure SSH is securely configured</xccdf:description>
+        <xccdf:check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+            <xccdf:check-content-ref href="ssh-security.xml"/>
+        </xccdf:check>
+    </xccdf:Rule>
+    
+    <xccdf:Rule id="rule-firewall-enabled">
+        <xccdf:title>Firewall Enabled</xccdf:title>
+        <xccdf:description>Ensure firewall is enabled and configured</xccdf:description>
+        <xccdf:check system="http://oval.mitre.org/XMLSchema/oval-definitions-5">
+            <xccdf:check-content-ref href="firewall-enabled.xml"/>
+        </xccdf:check>
+    </xccdf:Rule>
+</xccdf:Benchmark>
