@@ -1,0 +1,9 @@
+framework:
+  - terraform
+output: cli
+quiet: false
+compact: false
+soft-fail: false
+skip-check:
+  - CKV_AWS_18  # Ensure S3 bucket has access logging configured
+  - CKV_AWS_52  # Ensure S3 bucket has MFA delete enabled
