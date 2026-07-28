@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  database.properties: |
+    db.host=localhost
+    db.username=admin
+    db.password=admin123
+    api.key=sk-abcdef1234567890
+  app.conf: |
+    [database]
+    password = "super_secret_password"
+    [api]
+    token = "ghp_1234567890abcdefghijklmnop"
