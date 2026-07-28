@@ -1,0 +1,89 @@
+pipeline {
+    agent any
+    
+    environment {
+        SONAR_TOKEN = credentials('sonar-token')
+        DEFECTDOJO_TOKEN = credentials('defectdojo-token')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        
+        stage('SAST - SonarQube Analysis') {
+            steps {
+                script {
+                    def scannerHome = tool 'SonarQubeScanner'
+                    withSonarQubeEnv('SonarQube') {
+                        sh "${scannerHome}/bin/sonar-scanner"
+                    }
+                }
+            }
+        }
+        
+        stage('SCA - Dependency Check') {
+            steps {
+                sh '''
+                    dependency-check --project "DevSecOps Demo" \
+                    --scan . \
+                    --format JSON \
+                    --out dependency-check-report.json
+                '''
+                archiveArtifacts artifacts: 'dependency-check-report.json'
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t devsecops-demo:latest .'
+            }
+        }
+        
+        stage('DAST - ZAP Security Scan') {
+            steps {
+                sh '''
+                    # Start the application
+                    docker run -d --name test-app -p 3000:3000 devsecops-demo:latest
+                    sleep 10
+                    
+                    # Run ZAP scan
+                    docker run -t owasp/zap2docker-stable zap-baseline.py \
+                    -t http://host.docker.internal:3000 \
+                    -J zap-report.json
+                    
+                    # Stop test application
+                    docker stop test-app
+                    docker rm test-app
+                '''
+            }
+        }
+        
+        stage('Upload to DefectDojo') {
+            steps {
+                sh '''
+                    # Upload SonarQube results to DefectDojo
+                    curl -X POST "http://localhost:8080/api/v2/import-scan/" \
+                    -H "Authorization: Token $DEFECTDOJO_TOKEN" \
+                    -F "scan_type=SonarQube Scan" \
+                    -F "file=@sonar-report.json" \
+                    -F "engagement=1"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
