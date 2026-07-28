@@ -45,3 +45,43 @@ resource "aws_securityhub_standards_subscription" "cis" {
   standards_arn = "arn:aws:securityhub:::ruleset/finding-format/cis-aws-foundations-benchmark/v/1.2.0"
   depends_on    = [aws_securityhub_account.main]
 }
+
+
+
+# Enable GuardDuty
+resource "aws_guardduty_detector" "main" {
+  enable                       = true
+  finding_publishing_frequency = "FIFTEEN_MINUTES"
+  
+  datasources {
+    s3_logs {
+      enable = true
+    }
+    kubernetes {
+      audit_logs {
+        enable = true
+      }
+    }
+    malware_protection {
+      scan_ec2_instance_with_findings {
+        ebs_volumes {
+          enable = true
+        }
+      }
+    }
+  }
+
+  tags = {
+    Name        = "${var.project_name}-guardduty"
+    Environment = "lab"
+  }
+}
+
+# Create GuardDuty threat intel set (optional)
+resource "aws_guardduty_threatintelset" "main" {
+  activate    = true
+  detector_id = aws_guardduty_detector.main.id
+  format      = "TXT"
+  location    = "https://s3.amazonaws.com/your-bucket/threatintelset.txt"
+  name        = "${var.project_name}-threat-intel"
+}
