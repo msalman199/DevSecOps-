@@ -1,0 +1,30 @@
+version: '3.8'
+services:
+  defectdojo:
+    image: defectdojo/defectdojo-django:latest
+    container_name: defectdojo
+    ports:
+      - "8080:8080"
+    environment:
+      - DD_DATABASE_URL=postgresql://defectdojo:defectdojo@postgres:5432/defectdojo
+      - DD_SECRET_KEY=your-secret-key-here
+      - DD_DEBUG=True
+      - DD_ALLOWED_HOSTS=*
+    depends_on:
+      - postgres
+    volumes:
+      - defectdojo_media:/app/media
+
+  postgres:
+    image: postgres:13
+    container_name: defectdojo-postgres
+    environment:
+      - POSTGRES_DB=defectdojo
+      - POSTGRES_USER=defectdojo
+      - POSTGRES_PASSWORD=defectdojo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  defectdojo_media:
+  postgres_data:
