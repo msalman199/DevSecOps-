@@ -1,0 +1,9 @@
+{
+  "database": {
+    "host": "localhost",
+    "username": "admin",
+    "password": "admin123!@#",
+    "api_key": "sk-1234567890abcdef"
+  },
+  "github_token": "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+}
