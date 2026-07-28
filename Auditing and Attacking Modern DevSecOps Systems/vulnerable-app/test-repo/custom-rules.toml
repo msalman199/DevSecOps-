@@ -1,0 +1,9 @@
+[[rules]]
+id = "custom-api-key"
+description = "Custom API Key"
+regex = '''sk-[a-zA-Z0-9]{32}'''
+
+[[rules]]
+id = "database-password"
+description = "Database Password"
+regex = '''password["\s]*[:=]["\s]*[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]{8,}'''
