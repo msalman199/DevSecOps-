@@ -1,0 +1,861 @@
+Secure SDLC and DevSecOps Integration on AWS
+Lab Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamentals of DevSecOps and its integration with AWS security services • Set up a complete DevSecOps pipeline using AWS native tools • Configure AWS Security Hub for centralized security findings management • Implement AWS CodeGuru Reviewer for automated code security analysis • Deploy Amazon GuardDuty for threat detection and monitoring • Utilize AWS Config for compliance monitoring and configuration management • Create Infrastructure as Code (IaC) templates using Terraform • Validate Terraform configurations using security scanning tools • Integrate Checkov for policy-as-code security scanning • Implement automated security testing throughout the software development lifecycle
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of cloud computing concepts • Familiarity with AWS services and console navigation • Basic knowledge of Git version control • Understanding of CI/CD pipeline concepts • Basic command-line interface experience • Fundamental knowledge of JSON and YAML formats
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines with all necessary tools installed. Simply click Start Lab to access your environment. No need to build or configure your own virtual machine.
+
+Your lab environment includes: • AWS CLI pre-configured with appropriate permissions • Terraform installed and ready to use • Git for version control • Python and pip for additional tools • Text editors (nano, vim) • All necessary security scanning tools
+
+Task 1: Environment Preparation and Initial Setup
+Subtask 1.1: Verify Lab Environment
+First, let's verify that all required tools are available in your environment.
+
+Open your terminal and check AWS CLI configuration:
+aws --version
+aws sts get-caller-identity
+Verify Terraform installation:
+terraform --version
+Check if Python and pip are available:
+python3 --version
+pip3 --version
+Subtask 1.2: Install Additional Security Tools
+Install Checkov for Terraform security scanning:
+
+pip3 install checkov
+checkov --version
+Install TFLint for Terraform linting:
+
+curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+tflint --version
+Subtask 1.3: Create Project Directory Structure
+Create a well-organized directory structure for your DevSecOps project:
+
+mkdir -p ~/devsecops-lab
+cd ~/devsecops-lab
+mkdir -p {terraform,scripts,policies,docs}
+Task 2: Setting Up AWS Security Services with Terraform
+Subtask 2.1: Create Terraform Configuration for AWS Security Hub
+Create the main Terraform configuration file:
+
+cd ~/devsecops-lab/terraform
+nano main.tf
+Add the following content to main.tf:
+
+# Configure the AWS Provider
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# Variables
+variable "aws_region" {
+  description = "AWS region for resources"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "project_name" {
+  description = "Name of the project"
+  type        = string
+  default     = "devsecops-lab"
+}
+
+# Data sources
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
+# Enable Security Hub
+resource "aws_securityhub_account" "main" {
+  enable_default_standards = true
+}
+
+# Subscribe to Security Hub standards
+resource "aws_securityhub_standards_subscription" "aws_foundational" {
+  standards_arn = "arn:aws:securityhub:::ruleset/finding-format/aws-foundational-security-standard/v/1.0.0"
+  depends_on    = [aws_securityhub_account.main]
+}
+
+resource "aws_securityhub_standards_subscription" "cis" {
+  standards_arn = "arn:aws:securityhub:::ruleset/finding-format/cis-aws-foundations-benchmark/v/1.2.0"
+  depends_on    = [aws_securityhub_account.main]
+}
+Subtask 2.2: Configure Amazon GuardDuty
+Add GuardDuty configuration to your main.tf file:
+
+# Enable GuardDuty
+resource "aws_guardduty_detector" "main" {
+  enable                       = true
+  finding_publishing_frequency = "FIFTEEN_MINUTES"
+  
+  datasources {
+    s3_logs {
+      enable = true
+    }
+    kubernetes {
+      audit_logs {
+        enable = true
+      }
+    }
+    malware_protection {
+      scan_ec2_instance_with_findings {
+        ebs_volumes {
+          enable = true
+        }
+      }
+    }
+  }
+
+  tags = {
+    Name        = "${var.project_name}-guardduty"
+    Environment = "lab"
+  }
+}
+
+# Create GuardDuty threat intel set (optional)
+resource "aws_guardduty_threatintelset" "main" {
+  activate    = true
+  detector_id = aws_guardduty_detector.main.id
+  format      = "TXT"
+  location    = "https://s3.amazonaws.com/your-bucket/threatintelset.txt"
+  name        = "${var.project_name}-threat-intel"
+}
+Subtask 2.3: Configure AWS Config
+Add AWS Config configuration to monitor compliance:
+
+# Create S3 bucket for Config
+resource "aws_s3_bucket" "config" {
+  bucket        = "${var.project_name}-config-${random_string.suffix.result}"
+  force_destroy = true
+
+  tags = {
+    Name        = "${var.project_name}-config-bucket"
+    Environment = "lab"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "config" {
+  bucket = aws_s3_bucket.config.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "config" {
+  bucket = aws_s3_bucket.config.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+# IAM role for Config
+resource "aws_iam_role" "config" {
+  name = "${var.project_name}-config-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "config" {
+  role       = aws_iam_role.config.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/ConfigRole"
+}
+
+# Config delivery channel
+resource "aws_config_delivery_channel" "main" {
+  name           = "${var.project_name}-delivery-channel"
+  s3_bucket_name = aws_s3_bucket.config.bucket
+  depends_on     = [aws_config_configuration_recorder.main]
+}
+
+# Config configuration recorder
+resource "aws_config_configuration_recorder" "main" {
+  name     = "${var.project_name}-recorder"
+  role_arn = aws_iam_role.config.arn
+
+  recording_group {
+    all_supported                 = true
+    include_global_resource_types = true
+  }
+}
+
+# Enable Config configuration recorder
+resource "aws_config_configuration_recorder_status" "main" {
+  name       = aws_config_configuration_recorder.main.name
+  is_enabled = true
+  depends_on = [aws_config_delivery_channel.main]
+}
+Subtask 2.4: Add CodeGuru Reviewer Configuration
+Add CodeGuru Reviewer setup for code analysis:
+
+# Create CodeCommit repository for demonstration
+resource "aws_codecommit_repository" "main" {
+  repository_name = "${var.project_name}-repo"
+  description     = "Repository for DevSecOps lab"
+
+  tags = {
+    Name        = "${var.project_name}-repository"
+    Environment = "lab"
+  }
+}
+
+# Associate CodeGuru Reviewer with the repository
+resource "aws_codeguru_reviewer_repository_association" "main" {
+  repository {
+    codecommit {
+      name = aws_codecommit_repository.main.repository_name
+    }
+  }
+
+  type = "CodeCommit"
+}
+Subtask 2.5: Create Outputs File
+Create an outputs file to display important information:
+
+nano outputs.tf
+Add the following content:
+
+output "security_hub_arn" {
+  description = "ARN of the Security Hub account"
+  value       = aws_securityhub_account.main.arn
+}
+
+output "guardduty_detector_id" {
+  description = "ID of the GuardDuty detector"
+  value       = aws_guardduty_detector.main.id
+}
+
+output "config_recorder_name" {
+  description = "Name of the Config recorder"
+  value       = aws_config_configuration_recorder.main.name
+}
+
+output "codecommit_repository_url" {
+  description = "URL of the CodeCommit repository"
+  value       = aws_codecommit_repository.main.clone_url_http
+}
+
+output "config_s3_bucket" {
+  description = "S3 bucket for Config"
+  value       = aws_s3_bucket.config.bucket
+}
+Task 3: Terraform Security Validation and Scanning
+Subtask 3.1: Initialize and Validate Terraform
+Initialize your Terraform configuration:
+
+cd ~/devsecops-lab/terraform
+terraform init
+Validate the Terraform syntax:
+
+terraform validate
+Format the Terraform files:
+
+terraform fmt
+Subtask 3.2: Run Checkov Security Scan
+Scan your Terraform configuration with Checkov:
+
+checkov -d . --framework terraform
+Create a Checkov configuration file to customize scanning:
+
+nano .checkov.yml
+Add the following content:
+
+framework:
+  - terraform
+output: cli
+quiet: false
+compact: false
+soft-fail: false
+skip-check:
+  - CKV_AWS_18  # Ensure S3 bucket has access logging configured
+  - CKV_AWS_52  # Ensure S3 bucket has MFA delete enabled
+Run Checkov with the configuration file:
+
+checkov -d . --config-file .checkov.yml
+Subtask 3.3: Run TFLint for Additional Validation
+Create a TFLint configuration:
+
+nano .tflint.hcl
+Add the following content:
+
+plugin "aws" {
+  enabled = true
+  version = "0.24.1"
+  source  = "github.com/terraform-linters/tflint-ruleset-aws"
+}
+
+rule "terraform_deprecated_interpolation" {
+  enabled = true
+}
+
+rule "terraform_unused_declarations" {
+  enabled = true
+}
+
+rule "terraform_comment_syntax" {
+  enabled = true
+}
+
+rule "terraform_documented_outputs" {
+  enabled = true
+}
+
+rule "terraform_documented_variables" {
+  enabled = true
+}
+Initialize and run TFLint:
+
+tflint --init
+tflint
+Subtask 3.4: Create Security Policy as Code
+Create a custom Checkov policy for your organization:
+
+mkdir -p ~/devsecops-lab/policies
+cd ~/devsecops-lab/policies
+nano custom_s3_policy.py
+Add the following custom policy:
+
+from checkov.common.models.enums import TRUE_VALUES
+from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
+from checkov.common.models.enums import ANY_VALUE
+
+
+class S3BucketMustHaveTagging(BaseResourceCheck):
+    def __init__(self):
+        name = "Ensure S3 bucket has required tags"
+        id = "CKV2_CUSTOM_1"
+        supported_resources = ['aws_s3_bucket']
+        categories = []
+        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+
+    def scan_resource_conf(self, conf):
+        """
+        Looks for required tags on S3 buckets
+        """
+        if 'tags' in conf:
+            tags = conf['tags'][0]
+            required_tags = ['Name', 'Environment']
+            
+            for required_tag in required_tags:
+                if required_tag not in tags:
+                    return CheckResult.FAILED
+            return CheckResult.PASSED
+        return CheckResult.FAILED
+
+
+check = S3BucketMustHaveTagging()
+Run Checkov with custom policies:
+
+cd ~/devsecops-lab/terraform
+checkov -d . --external-checks-dir ../policies
+Task 4: Deploy and Test the DevSecOps Infrastructure
+Subtask 4.1: Plan and Apply Terraform Configuration
+Generate and review the Terraform execution plan:
+
+terraform plan -out=tfplan
+Apply the Terraform configuration:
+
+terraform apply tfplan
+Subtask 4.2: Verify AWS Security Services
+Verify that Security Hub is enabled:
+
+aws securityhub get-enabled-standards --region us-east-1
+Check GuardDuty detector status:
+
+aws guardduty list-detectors --region us-east-1
+Verify AWS Config status:
+
+aws configservice describe-configuration-recorders --region us-east-1
+Subtask 4.3: Create Sample Application Code
+Create a sample application to test the DevSecOps pipeline:
+
+cd ~/devsecops-lab
+mkdir sample-app
+cd sample-app
+Create a simple Python application:
+
+nano app.py
+Add the following content:
+
+#!/usr/bin/env python3
+"""
+Sample application for DevSecOps lab
+"""
+import os
+import boto3
+from flask import Flask, jsonify
+
+app = Flask(__name__)
+
+# Intentional security issues for demonstration
+AWS_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"  # Hard-coded credential (bad practice)
+AWS_SECRET_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # Hard-coded credential
+
+@app.route('/')
+def hello():
+    return jsonify({"message": "Hello from DevSecOps Lab!"})
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy"})
+
+@app.route('/data')
+def get_data():
+    # Intentional SQL injection vulnerability for demonstration
+    user_id = request.args.get('user_id')
+    query = f"SELECT * FROM users WHERE id = {user_id}"  # SQL injection risk
+    return jsonify({"query": query})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)  # Debug mode in production (bad practice)
+Create requirements file:
+
+nano requirements.txt
+Add the following content:
+
+Flask==2.3.3
+boto3==1.28.85
+requests==2.31.0
+Create a Dockerfile:
+
+nano Dockerfile
+Add the following content:
+
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app.py .
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
+Subtask 4.4: Commit Code to CodeCommit Repository
+Configure Git (if not already configured):
+
+git config --global user.name "DevSecOps Student"
+git config --global user.email "student@example.com"
+Initialize Git repository and commit code:
+
+cd ~/devsecops-lab/sample-app
+git init
+git add .
+git commit -m "Initial commit of sample application"
+Get the CodeCommit repository URL from Terraform output:
+
+cd ~/devsecops-lab/terraform
+terraform output codecommit_repository_url
+Add the remote repository and push:
+
+cd ~/devsecops-lab/sample-app
+git remote add origin $(cd ../terraform && terraform output -raw codecommit_repository_url)
+git push -u origin master
+Task 5: Implement Automated Security Scanning Pipeline
+Subtask 5.1: Create CI/CD Pipeline with Security Integration
+Create a buildspec file for AWS CodeBuild:
+
+cd ~/devsecops-lab/sample-app
+nano buildspec.yml
+Add the following content:
+
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo Installing dependencies...
+      - pip install --upgrade pip
+      - pip install bandit safety checkov
+      - pip install -r requirements.txt
+  
+  pre_build:
+    commands:
+      - echo Starting security scans...
+      - echo Running Bandit security scan...
+      - bandit -r . -f json -o bandit-report.json || true
+      - echo Running Safety dependency scan...
+      - safety check --json --output safety-report.json || true
+      - echo Running Checkov infrastructure scan...
+      - checkov -f Dockerfile --framework dockerfile -o json --output-file checkov-report.json || true
+  
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+  
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - echo Generating security report summary...
+      - python generate_security_report.py
+
+artifacts:
+  files:
+    - '**/*'
+  secondary-artifacts:
+    security-reports:
+      files:
+        - '*-report.json'
+        - security-summary.html
+Subtask 5.2: Create Security Report Generator
+Create a Python script to generate security reports:
+
+nano generate_security_report.py
+Add the following content:
+
+#!/usr/bin/env python3
+"""
+Security report generator for DevSecOps pipeline
+"""
+import json
+import os
+from datetime import datetime
+
+def load_json_report(filename):
+    """Load JSON report if it exists"""
+    if os.path.exists(filename):
+        try:
+            with open(filename, 'r') as f:
+                return json.load(f)
+        except:
+            return None
+    return None
+
+def generate_html_report():
+    """Generate HTML security report"""
+    
+    # Load security scan results
+    bandit_report = load_json_report('bandit-report.json')
+    safety_report = load_json_report('safety-report.json')
+    checkov_report = load_json_report('checkov-report.json')
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>DevSecOps Security Report</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; }}
+            .header {{ background-color: #f0f0f0; padding: 20px; border-radius: 5px; }}
+            .section {{ margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }}
+            .critical {{ background-color: #ffebee; }}
+            .warning {{ background-color: #fff3e0; }}
+            .info {{ background-color: #e8f5e8; }}
+            .summary {{ font-size: 18px; font-weight: bold; }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>DevSecOps Security Scan Report</h1>
+            <p>Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+        
+        <div class="section info">
+            <h2>Scan Summary</h2>
+            <div class="summary">
+                <p>✓ Static Application Security Testing (SAST) - Bandit</p>
+                <p>✓ Dependency Vulnerability Scanning - Safety</p>
+                <p>✓ Infrastructure as Code Scanning - Checkov</p>
+            </div>
+        </div>
+    """
+    
+    # Add Bandit results
+    if bandit_report:
+        issues_count = len(bandit_report.get('results', []))
+        html_content += f"""
+        <div class="section {'critical' if issues_count > 0 else 'info'}">
+            <h2>Static Code Analysis (Bandit)</h2>
+            <p>Issues found: {issues_count}</p>
+        """
+        
+        if issues_count > 0:
+            html_content += "<ul>"
+            for issue in bandit_report.get('results', [])[:5]:  # Show first 5 issues
+                html_content += f"<li><strong>{issue.get('test_name', 'Unknown')}</strong>: {issue.get('issue_text', 'No description')}</li>"
+            html_content += "</ul>"
+        
+        html_content += "</div>"
+    
+    # Add Safety results
+    if safety_report:
+        vulns = safety_report if isinstance(safety_report, list) else []
+        html_content += f"""
+        <div class="section {'warning' if len(vulns) > 0 else 'info'}">
+            <h2>Dependency Vulnerability Scan (Safety)</h2>
+            <p>Vulnerabilities found: {len(vulns)}</p>
+        """
+        
+        if len(vulns) > 0:
+            html_content += "<ul>"
+            for vuln in vulns[:5]:  # Show first 5 vulnerabilities
+                html_content += f"<li><strong>{vuln.get('package', 'Unknown package')}</strong>: {vuln.get('advisory', 'No advisory')}</li>"
+            html_content += "</ul>"
+        
+        html_content += "</div>"
+    
+    # Add Checkov results
+    if checkov_report:
+        failed_checks = checkov_report.get('results', {}).get('failed_checks', [])
+        html_content += f"""
+        <div class="section {'warning' if len(failed_checks) > 0 else 'info'}">
+            <h2>Infrastructure Scan (Checkov)</h2>
+            <p>Failed checks: {len(failed_checks)}</p>
+        """
+        
+        if len(failed_checks) > 0:
+            html_content += "<ul>"
+            for check in failed_checks[:5]:  # Show first 5 failed checks
+                html_content += f"<li><strong>{check.get('check_id', 'Unknown')}</strong>: {check.get('check_name', 'No description')}</li>"
+            html_content += "</ul>"
+        
+        html_content += "</div>"
+    
+    html_content += """
+        <div class="section info">
+            <h2>Recommendations</h2>
+            <ul>
+                <li>Review and fix all critical and high-severity security issues</li>
+                <li>Update dependencies with known vulnerabilities</li>
+                <li>Implement security best practices in infrastructure code</li>
+                <li>Regular security scanning in CI/CD pipeline</li>
+            </ul>
+        </div>
+    </body>
+    </html>
+    """
+    
+    with open('security-summary.html', 'w') as f:
+        f.write(html_content)
+    
+    print("Security report generated: security-summary.html")
+
+if __name__ == "__main__":
+    generate_html_report()
+Subtask 5.3: Test Security Scanning Locally
+Run the security scans locally to test:
+
+cd ~/devsecops-lab/sample-app
+
+# Install security scanning tools
+pip3 install bandit safety
+
+# Run Bandit scan
+bandit -r . -f json -o bandit-report.json
+
+# Run Safety scan
+safety check --json --output safety-report.json
+
+# Run Checkov on Dockerfile
+checkov -f Dockerfile --framework dockerfile -o json --output-file checkov-report.json
+
+# Generate security report
+python3 generate_security_report.py
+View the generated security report:
+
+ls -la *.json *.html
+Task 6: Monitor and Analyze Security Findings
+Subtask 6.1: Check Security Hub Findings
+Access Security Hub findings through AWS CLI:
+
+aws securityhub get-findings --region us-east-1 --max-items 10
+Get findings by severity:
+
+aws securityhub get-findings \
+    --filters '{"SeverityLabel":[{"Value":"HIGH","Comparison":"EQUALS"}]}' \
+    --region us-east-1
+Subtask 6.2: Monitor GuardDuty Findings
+List GuardDuty findings:
+
+DETECTOR_ID=$(aws guardduty list-detectors --query 'DetectorIds[0]' --output text --region us-east-1)
+aws guardduty list-findings --detector-id $DETECTOR_ID --region us-east-1
+Get detailed finding information:
+
+aws guardduty get-findings --detector-id $DETECTOR_ID --finding-ids $(aws guardduty list-findings --detector-id $DETECTOR_ID --query 'FindingIds[0]' --output text --region us-east-1) --region us-east-1
+Subtask 6.3: Review AWS Config Compliance
+Check Config rules compliance:
+
+aws configservice describe-compliance-by-config-rule --region us-east-1
+Get configuration history for resources:
+
+aws configservice get-resource-config-history \
+    --resource-type AWS::S3::Bucket \
+    --resource-id $(cd ../terraform && terraform output -raw config_s3_bucket) \
+    --region us-east-1
+Subtask 6.4: Create Security Dashboard Script
+Create a script to aggregate security findings:
+
+cd ~/devsecops-lab/scripts
+nano security_dashboard.py
+Add the following content:
+
+#!/usr/bin/env python3
+"""
+Security Dashboard - Aggregate security findings from AWS services
+"""
+import boto3
+import json
+from datetime import datetime, timedelta
+
+def get_security_hub_findings():
+    """Get Security Hub findings"""
+    client = boto3.client('securityhub', region_name='us-east-1')
+    
+    try:
+        response = client.get_findings(
+            Filters={
+                'RecordState': [{'Value': 'ACTIVE', 'Comparison': 'EQUALS'}]
+            },
+            MaxResults=50
+        )
+        return response.get('Findings', [])
+    except Exception as e:
+        print(f"Error getting Security Hub findings: {e}")
+        return []
+
+def get_guardduty_findings():
+    """Get GuardDuty findings"""
+    client = boto3.client('guardduty', region_name='us-east-1')
+    
+    try:
+        detectors = client.list_detectors()
+        if not detectors['DetectorIds']:
+            return []
+        
+        detector_id = detectors['DetectorIds'][0]
+        findings = client.list_findings(DetectorId=detector_id)
+        
+        if findings['FindingIds']:
+            detailed_findings = client.get_findings(
+                DetectorId=detector_id,
+                FindingIds=findings['FindingIds'][:10]  # Get first 10
+            )
+            return detailed_findings.get('Findings', [])
+        return []
+    except Exception as e:
+        print(f"Error getting GuardDuty findings: {e}")
+        return []
+
+def get_config_compliance():
+    """Get Config compliance status"""
+    client = boto3.client('config', region_name='us-east-1')
+    
+    try:
+        response = client.describe_compliance_by_config_rule()
+        return response.get('ComplianceByConfigRules', [])
+    except Exception as e:
+        print(f"Error getting Config compliance: {e}")
+        return []
+
+def generate_dashboard():
+    """Generate security dashboard"""
+    print("=" * 60)
+    print("DEVSECOPS SECURITY DASHBOARD")
+    print("=" * 60)
+    print(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print()
+    
+    # Security Hub findings
+    print("🔍 SECURITY HUB FINDINGS")
+    print("-" * 30)
+    sh_findings = get_security_hub_findings()
+    
+    if sh_findings:
+        severity_counts = {}
+        for finding in sh_findings:
+            severity = finding.get('Severity', {}).get('Label', 'UNKNOWN')
+            severity_counts[severity] = severity_counts.get(severity, 0) + 1
+        
+        for severity, count in severity_counts.items():
+            print(f"{severity}: {count}")
+    else:
+        print("No active findings")
+    print()
+    
+    # GuardDuty findings
+    print("🛡️  GUARDDUTY FINDINGS")
+    print("-" * 30)
+    gd_findings = get_guardduty_findings()
+    
+    if gd_findings:
+        for finding in gd_findings[:5]:  # Show first 5
+            print(f"• {finding.get('Title', 'Unknown threat')}")
+            print(f"  Severity: {finding.get('Severity', 'Unknown')}")
+    else:
+        print("No threats detected")
+    print()
+    
+    # Config compliance
+    print("📋 CONFIG COMPLIANCE")
+    print("-" * 30)
+    config_rules = get_config_compliance()
+    
+    if config_rules:
+        compliant = sum(1 for rule in config_rules if rule.get('Compliance', {}).get('ComplianceType') == 'COMPLIANT')
+        total = len(config_rules)
+        print(f"Compliant rules: {compliant}/{total}")
+        
+        non_compliant = [rule for rule in config_rules if rule.get('Compliance', {}).get('ComplianceType') == 'NON_COMPLIANT']
+        if non_compliant:
+            print("Non-compliant rules:")
+            for rule in non_compliant[:3]:  # Show first 3
+                print(f"• {rule.get('ConfigRuleName', 'Unknown rule')}")
+    else:
+        print("No Config rules found")
+    print()
+    
+    print("=" * 60)
+    print("Dashboard generation complete!")
+
+if __name__ == "__main__":
+    generate_dashboard()
+Run the security dashboard:
+
+python3 security_dashboard.py
+Task 7: Cleanup and Documentation
+Subtask 7.1:
