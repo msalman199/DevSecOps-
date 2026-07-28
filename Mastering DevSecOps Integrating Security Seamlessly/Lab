@@ -1,0 +1,898 @@
+Mastering DevSecOps - Integrating Security Seamlessly
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Implement a complete CI/CD pipeline with integrated security scanning tools • Configure Static Application Security Testing (SAST) using SonarQube • Set up Software Composition Analysis (SCA) using OWASP Dependency-Check • Perform Dynamic Application Security Testing (DAST) using OWASP ZAP • Create and scan Infrastructure as Code (IaC) templates using Terraform and TFSec • Centralize vulnerability management using DefectDojo • Validate compliance using InSpec • Deploy applications securely in Kubernetes • Implement incident response automation using Falco • Understand the complete DevSecOps workflow and security integration points
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of Linux command line operations • Familiarity with Git version control concepts • Basic knowledge of Docker containers • Understanding of CI/CD pipeline concepts • Basic familiarity with YAML configuration files • Elementary knowledge of web application security concepts
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines with all necessary tools installed. Simply click Start Lab to access your environment - no need to build your own VM or install software.
+
+Your lab environment includes: • Ubuntu 20.04 LTS with Docker and Docker Compose • Jenkins for CI/CD pipeline • SonarQube for SAST • OWASP Dependency-Check for SCA • OWASP ZAP for DAST • Terraform and TFSec for IaC scanning • DefectDojo for vulnerability management • InSpec for compliance validation • Kubernetes cluster (minikube) • Falco for runtime security monitoring
+
+Task 1: Setting Up the CI/CD Pipeline with SAST
+Subtask 1.1: Initialize the Sample Application
+First, let's create a sample web application that we'll use throughout this lab.
+
+Create project directory and navigate to it:
+mkdir devsecops-lab
+cd devsecops-lab
+Create a simple Node.js application:
+# Create package.json
+cat > package.json << 'EOF'
+{
+  "name": "devsecops-demo-app",
+  "version": "1.0.0",
+  "description": "Demo application for DevSecOps lab",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "4.17.1",
+    "lodash": "4.17.20"
+  }
+}
+EOF
+Create the main application file:
+cat > app.js << 'EOF'
+const express = require('express');
+const _ = require('lodash');
+const app = express();
+const port = 3000;
+
+// Intentional security vulnerability for demonstration
+app.get('/user/:id', (req, res) => {
+    const userId = req.params.id;
+    // SQL injection vulnerability (simulated)
+    const query = "SELECT * FROM users WHERE id = " + userId;
+    res.json({ message: 'User data retrieved', query: query });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+app.listen(port, () => {
+    console.log(`App listening at http://localhost:${port}`);
+});
+EOF
+Create Dockerfile:
+cat > Dockerfile << 'EOF'
+FROM node:14-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 3000
+CMD ["npm", "start"]
+EOF
+Subtask 1.2: Configure SonarQube for SAST
+Start SonarQube using Docker Compose:
+cat > docker-compose-sonar.yml << 'EOF'
+version: '3.8'
+services:
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+
+volumes:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
+EOF
+Start SonarQube:
+docker-compose -f docker-compose-sonar.yml up -d
+Wait for SonarQube to start and access the web interface:
+# Wait for SonarQube to be ready
+echo "Waiting for SonarQube to start..."
+sleep 60
+
+# Check if SonarQube is running
+curl -f http://localhost:9000/api/system/status || echo "SonarQube is starting up..."
+Create SonarQube project configuration:
+cat > sonar-project.properties << 'EOF'
+sonar.projectKey=devsecops-demo
+sonar.projectName=DevSecOps Demo Application
+sonar.projectVersion=1.0
+sonar.sources=.
+sonar.exclusions=node_modules/**
+sonar.javascript.lcov.reportPaths=coverage/lcov.info
+EOF
+Subtask 1.3: Create Jenkins Pipeline with SAST Integration
+Create Jenkinsfile for CI/CD pipeline:
+cat > Jenkinsfile << 'EOF'
+pipeline {
+    agent any
+    
+    environment {
+        SONAR_TOKEN = credentials('sonar-token')
+        DEFECTDOJO_TOKEN = credentials('defectdojo-token')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+        
+        stage('SAST - SonarQube Analysis') {
+            steps {
+                script {
+                    def scannerHome = tool 'SonarQubeScanner'
+                    withSonarQubeEnv('SonarQube') {
+                        sh "${scannerHome}/bin/sonar-scanner"
+                    }
+                }
+            }
+        }
+        
+        stage('SCA - Dependency Check') {
+            steps {
+                sh '''
+                    dependency-check --project "DevSecOps Demo" \
+                    --scan . \
+                    --format JSON \
+                    --out dependency-check-report.json
+                '''
+                archiveArtifacts artifacts: 'dependency-check-report.json'
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t devsecops-demo:latest .'
+            }
+        }
+        
+        stage('DAST - ZAP Security Scan') {
+            steps {
+                sh '''
+                    # Start the application
+                    docker run -d --name test-app -p 3000:3000 devsecops-demo:latest
+                    sleep 10
+                    
+                    # Run ZAP scan
+                    docker run -t owasp/zap2docker-stable zap-baseline.py \
+                    -t http://host.docker.internal:3000 \
+                    -J zap-report.json
+                    
+                    # Stop test application
+                    docker stop test-app
+                    docker rm test-app
+                '''
+            }
+        }
+        
+        stage('Upload to DefectDojo') {
+            steps {
+                sh '''
+                    # Upload SonarQube results to DefectDojo
+                    curl -X POST "http://localhost:8080/api/v2/import-scan/" \
+                    -H "Authorization: Token $DEFECTDOJO_TOKEN" \
+                    -F "scan_type=SonarQube Scan" \
+                    -F "file=@sonar-report.json" \
+                    -F "engagement=1"
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
+EOF
+Task 2: Implementing SCA and DAST Tools
+Subtask 2.1: Configure OWASP Dependency-Check for SCA
+Install OWASP Dependency-Check:
+# Download and install Dependency-Check
+wget https://github.com/jeremylong/DependencyCheck/releases/download/v7.4.4/dependency-check-7.4.4-release.zip
+unzip dependency-check-7.4.4-release.zip
+sudo mv dependency-check /opt/
+sudo ln -s /opt/dependency-check/bin/dependency-check.sh /usr/local/bin/dependency-check
+Run SCA scan manually:
+dependency-check --project "DevSecOps Demo App" \
+--scan . \
+--format JSON \
+--format HTML \
+--out ./sca-reports/
+Create SCA scanning script:
+mkdir -p scripts
+cat > scripts/run-sca-scan.sh << 'EOF'
+#!/bin/bash
+
+echo "Starting Software Composition Analysis..."
+
+# Create reports directory
+mkdir -p sca-reports
+
+# Run OWASP Dependency Check
+dependency-check --project "DevSecOps Demo App" \
+--scan . \
+--format JSON \
+--format HTML \
+--format XML \
+--out ./sca-reports/ \
+--suppression suppression.xml
+
+echo "SCA scan completed. Reports available in sca-reports/"
+
+# Display summary
+if [ -f "sca-reports/dependency-check-report.json" ]; then
+    echo "Vulnerabilities found:"
+    cat sca-reports/dependency-check-report.json | jq '.dependencies[].vulnerabilities | length' | awk '{sum+=$1} END {print "Total vulnerabilities: " sum}'
+fi
+EOF
+
+chmod +x scripts/run-sca-scan.sh
+Subtask 2.2: Configure OWASP ZAP for DAST
+Create DAST scanning script:
+cat > scripts/run-dast-scan.sh << 'EOF'
+#!/bin/bash
+
+echo "Starting Dynamic Application Security Testing..."
+
+# Create reports directory
+mkdir -p dast-reports
+
+# Start the application in background
+echo "Starting application..."
+docker run -d --name dast-test-app -p 3000:3000 devsecops-demo:latest
+
+# Wait for application to start
+sleep 15
+
+# Check if application is running
+if curl -f http://localhost:3000/health; then
+    echo "Application is running, starting DAST scan..."
+    
+    # Run ZAP baseline scan
+    docker run -v $(pwd)/dast-reports:/zap/wrk/:rw \
+    -t owasp/zap2docker-stable zap-baseline.py \
+    -t http://host.docker.internal:3000 \
+    -J dast-report.json \
+    -r dast-report.html
+    
+    echo "DAST scan completed."
+else
+    echo "Application failed to start. Skipping DAST scan."
+fi
+
+# Clean up
+docker stop dast-test-app 2>/dev/null
+docker rm dast-test-app 2>/dev/null
+
+echo "DAST reports available in dast-reports/"
+EOF
+
+chmod +x scripts/run-dast-scan.sh
+Run DAST scan:
+./scripts/run-dast-scan.sh
+Task 3: Infrastructure as Code with Terraform and TFSec
+Subtask 3.1: Create Terraform Templates
+Create Terraform configuration for AWS infrastructure:
+mkdir -p terraform
+cd terraform
+
+cat > main.tf << 'EOF'
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# VPC Configuration
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name        = "devsecops-vpc"
+    Environment = var.environment
+  }
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "devsecops-igw"
+  }
+}
+
+# Public Subnet
+resource "aws_subnet" "public" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "devsecops-public-subnet"
+  }
+}
+
+# Security Group with intentional misconfigurations for demonstration
+resource "aws_security_group" "web" {
+  name_prefix = "devsecops-web-"
+  vpc_id      = aws_vpc.main.id
+
+  # Intentionally insecure - allows all traffic (for demonstration)
+  ingress {
+    from_port   = 0
+    to_port     = 65535
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "devsecops-web-sg"
+  }
+}
+
+# S3 Bucket with security issues for demonstration
+resource "aws_s3_bucket" "app_data" {
+  bucket = "devsecops-demo-bucket-${random_string.bucket_suffix.result}"
+
+  tags = {
+    Name        = "devsecops-app-data"
+    Environment = var.environment
+  }
+}
+
+# Intentionally insecure S3 bucket configuration
+resource "aws_s3_bucket_public_access_block" "app_data" {
+  bucket = aws_s3_bucket.app_data.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "random_string" "bucket_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+EOF
+Create variables file:
+cat > variables.tf << 'EOF'
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-west-2"
+}
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "dev"
+}
+
+variable "instance_type" {
+  description = "EC2 instance type"
+  type        = string
+  default     = "t3.micro"
+}
+EOF
+Create outputs file:
+cat > outputs.tf << 'EOF'
+output "vpc_id" {
+  description = "ID of the VPC"
+  value       = aws_vpc.main.id
+}
+
+output "public_subnet_id" {
+  description = "ID of the public subnet"
+  value       = aws_subnet.public.id
+}
+
+output "security_group_id" {
+  description = "ID of the security group"
+  value       = aws_security_group.web.id
+}
+
+output "s3_bucket_name" {
+  description = "Name of the S3 bucket"
+  value       = aws_s3_bucket.app_data.bucket
+}
+EOF
+Subtask 3.2: Install and Configure TFSec
+Install TFSec:
+cd ..
+curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+sudo mv tfsec /usr/local/bin/
+Create TFSec scanning script:
+cat > scripts/run-tfsec-scan.sh << 'EOF'
+#!/bin/bash
+
+echo "Starting Terraform security scanning with TFSec..."
+
+# Create reports directory
+mkdir -p iac-reports
+
+# Run TFSec scan
+tfsec terraform/ \
+--format json \
+--out iac-reports/tfsec-report.json
+
+tfsec terraform/ \
+--format html \
+--out iac-reports/tfsec-report.html
+
+tfsec terraform/ \
+--format sarif \
+--out iac-reports/tfsec-report.sarif
+
+echo "TFSec scan completed. Reports available in iac-reports/"
+
+# Display summary
+if [ -f "iac-reports/tfsec-report.json" ]; then
+    echo "Security issues found:"
+    cat iac-reports/tfsec-report.json | jq '.results | length'
+fi
+EOF
+
+chmod +x scripts/run-tfsec-scan.sh
+Run TFSec scan:
+./scripts/run-tfsec-scan.sh
+Task 4: Centralized Vulnerability Management with DefectDojo
+Subtask 4.1: Setup DefectDojo
+Start DefectDojo using Docker Compose:
+cat > docker-compose-defectdojo.yml << 'EOF'
+version: '3.8'
+services:
+  defectdojo:
+    image: defectdojo/defectdojo-django:latest
+    container_name: defectdojo
+    ports:
+      - "8080:8080"
+    environment:
+      - DD_DATABASE_URL=postgresql://defectdojo:defectdojo@postgres:5432/defectdojo
+      - DD_SECRET_KEY=your-secret-key-here
+      - DD_DEBUG=True
+      - DD_ALLOWED_HOSTS=*
+    depends_on:
+      - postgres
+    volumes:
+      - defectdojo_media:/app/media
+
+  postgres:
+    image: postgres:13
+    container_name: defectdojo-postgres
+    environment:
+      - POSTGRES_DB=defectdojo
+      - POSTGRES_USER=defectdojo
+      - POSTGRES_PASSWORD=defectdojo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  defectdojo_media:
+  postgres_data:
+EOF
+Start DefectDojo:
+docker-compose -f docker-compose-defectdojo.yml up -d
+Wait for DefectDojo to initialize:
+echo "Waiting for DefectDojo to start..."
+sleep 120
+
+# Check if DefectDojo is accessible
+curl -f http://localhost:8080 || echo "DefectDojo is still starting up..."
+Subtask 4.2: Configure DefectDojo Integration
+Create DefectDojo upload script:
+cat > scripts/upload-to-defectdojo.sh << 'EOF'
+#!/bin/bash
+
+DEFECTDOJO_URL="http://localhost:8080"
+API_TOKEN="your-api-token-here"  # Replace with actual token after setup
+
+echo "Uploading scan results to DefectDojo..."
+
+# Function to upload scan results
+upload_scan() {
+    local scan_type=$1
+    local file_path=$2
+    local engagement_id=$3
+    
+    if [ -f "$file_path" ]; then
+        echo "Uploading $scan_type results..."
+        curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+        -H "Authorization: Token $API_TOKEN" \
+        -F "scan_type=$scan_type" \
+        -F "file=@$file_path" \
+        -F "engagement=$engagement_id" \
+        -F "active=true" \
+        -F "verified=false"
+    else
+        echo "File $file_path not found, skipping $scan_type upload"
+    fi
+}
+
+# Upload different scan results
+upload_scan "SonarQube Scan" "sonar-report.json" "1"
+upload_scan "Dependency Check Scan" "sca-reports/dependency-check-report.json" "1"
+upload_scan "ZAP Scan" "dast-reports/dast-report.json" "1"
+upload_scan "Terrascan Scan" "iac-reports/tfsec-report.json" "1"
+
+echo "Upload completed!"
+EOF
+
+chmod +x scripts/upload-to-defectdojo.sh
+Task 5: Compliance Validation using InSpec
+Subtask 5.1: Install and Configure InSpec
+Install InSpec:
+curl https://omnitruck.chef.io/install.sh | sudo bash -s -- -P inspec
+Create InSpec compliance profile:
+mkdir -p inspec-profiles/devsecops-compliance
+cd inspec-profiles/devsecops-compliance
+
+inspec init profile . --overwrite
+Create compliance controls:
+cat > controls/security_controls.rb << 'EOF'
+# Security Controls for DevSecOps Demo
+
+control 'docker-security-1' do
+  title 'Docker daemon configuration'
+  desc 'Ensure Docker daemon is configured securely'
+  impact 0.7
+  
+  describe file('/etc/docker/daemon.json') do
+    it { should exist }
+  end
+  
+  describe json('/etc/docker/daemon.json') do
+    its(['log-driver']) { should eq 'json-file' }
+  end
+end
+
+control 'system-security-1' do
+  title 'System security configuration'
+  desc 'Ensure system is configured with security best practices'
+  impact 0.8
+  
+  describe file('/etc/passwd') do
+    its('mode') { should cmp '0644' }
+  end
+  
+  describe file('/etc/shadow') do
+    its('mode') { should cmp '0640' }
+  end
+end
+
+control 'network-security-1' do
+  title 'Network security configuration'
+  desc 'Ensure network is configured securely'
+  impact 0.6
+  
+  describe port(22) do
+    it { should be_listening }
+  end
+  
+  describe iptables do
+    it { should have_rule('-P INPUT DROP') }
+  end
+end
+
+control 'application-security-1' do
+  title 'Application security checks'
+  desc 'Ensure application follows security best practices'
+  impact 0.9
+  
+  describe file('/app/package.json') do
+    it { should exist }
+  end
+  
+  # Check for known vulnerable packages
+  describe command('npm audit --json') do
+    its('exit_status') { should eq 0 }
+  end
+end
+EOF
+Create InSpec execution script:
+cd ../..
+cat > scripts/run-compliance-scan.sh << 'EOF'
+#!/bin/bash
+
+echo "Starting compliance validation with InSpec..."
+
+# Create reports directory
+mkdir -p compliance-reports
+
+# Run InSpec compliance scan
+inspec exec inspec-profiles/devsecops-compliance \
+--reporter json:compliance-reports/inspec-report.json \
+--reporter html:compliance-reports/inspec-report.html \
+--reporter cli
+
+echo "Compliance scan completed. Reports available in compliance-reports/"
+
+# Display summary
+if [ -f "compliance-reports/inspec-report.json" ]; then
+    echo "Compliance summary:"
+    cat compliance-reports/inspec-report.json | jq '.profiles[0].summary'
+fi
+EOF
+
+chmod +x scripts/run-compliance-scan.sh
+Run compliance validation:
+./scripts/run-compliance-scan.sh
+Task 6: Deploy Application in Kubernetes
+Subtask 6.1: Setup Kubernetes Environment
+Start Minikube:
+# Start minikube
+minikube start --driver=docker
+
+# Enable necessary addons
+minikube addons enable ingress
+minikube addons enable metrics-server
+Create Kubernetes manifests:
+mkdir -p k8s-manifests
+
+# Create namespace
+cat > k8s-manifests/namespace.yaml << 'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devsecops-demo
+  labels:
+    name: devsecops-demo
+EOF
+Create deployment manifest:
+cat > k8s-manifests/deployment.yaml << 'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devsecops-demo-app
+  namespace: devsecops-demo
+  labels:
+    app: devsecops-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: devsecops-demo
+  template:
+    metadata:
+      labels:
+        app: devsecops-demo
+    spec:
+      containers:
+      - name: devsecops-demo
+        image: devsecops-demo:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+EOF
+Create service manifest:
+cat > k8s-manifests/service.yaml << 'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: devsecops-demo-service
+  namespace: devsecops-demo
+spec:
+  selector:
+    app: devsecops-demo
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 3000
+  type: ClusterIP
+EOF
+Create network policy for security:
+cat > k8s-manifests/network-policy.yaml << 'EOF'
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: devsecops-demo-netpol
+  namespace: devsecops-demo
+spec:
+  podSelector:
+    matchLabels:
+      app: devsecops-demo
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+  egress:
+  - {}
+EOF
+Subtask 6.2: Deploy Application to Kubernetes
+Build and load Docker image to Minikube:
+# Build the image
+docker build -t devsecops-demo:latest .
+
+# Load image to minikube
+minikube image load devsecops-demo:latest
+Deploy application:
+# Apply all manifests
+kubectl apply -f k8s-manifests/
+
+# Wait for deployment to be ready
+kubectl wait --for=condition=available --timeout=300s deployment/devsecops-demo-app -n devsecops-demo
+
+# Check deployment status
+kubectl get pods -n devsecops-demo
+kubectl get services -n devsecops-demo
+Create deployment script:
+cat > scripts/deploy-to-k8s.sh << 'EOF'
+#!/bin/bash
+
+echo "Deploying application to Kubernetes..."
+
+# Build and load image
+echo "Building Docker image..."
+docker build -t devsecops-demo:latest .
+
+echo "Loading image to Minikube..."
+minikube image load devsecops-demo:latest
+
+# Deploy to Kubernetes
+echo "Applying Kubernetes manifests..."
+kubectl apply -f k8s-manifests/
+
+# Wait for deployment
+echo "Waiting for deployment to be ready..."
+kubectl wait --for=condition=available --timeout=300s deployment/devsecops-demo-app -n devsecops-demo
+
+# Display status
+echo "Deployment status:"
+kubectl get pods -n devsecops-demo
+kubectl get services -n devsecops-demo
+
+# Get application URL
+echo "Application URL:"
+minikube service devsecops-demo-service -n devsecops-demo --url
+
+echo "Deployment completed!"
+EOF
+
+chmod +x scripts/deploy-to-k8s.sh
+Task 7: Incident Response Automation using Falco
+Subtask 7.1: Install and Configure Falco
+Install Falco:
+# Add Falco repository
+curl -s https://falco.org/repo/falcosecurity-3672BA8F.asc | sudo apt-key add -
+echo "deb https://download.falco.org/packages/deb stable main" | sudo tee -a /etc/apt/sources.list.d/falcosecurity.list
+sudo apt-get update -y
+sudo apt-get install -y falco
+Create custom Falco rules:
+sudo mkdir -p /etc/falco/rules.d
+
+sudo cat > /etc/falco/rules.d/devsecops_rules.yaml << 'EOF'
+# Custom DevSecOps Security Rules
+
+- rule: Suspicious Network Activity in Container
+  desc: Detect suspicious network activity in containers
+  condition: >
+    spawned_process and container and
+    (proc.name in (nc, ncat, netcat, wget, curl) and
+     proc.args contains "http")
+  output: >
+    Suspicious network activity detected in container
+    (user=%user.name command=%proc.cmdline container=%container.name
+     image=%container.image.repository)
+  priority: WARNING
+  tags: [network, container]
+
+- rule: Unauthorized File Access in Container
+  desc: Detect unauthorized file access in containers
+  condition: >
+    open_read and container and
+    fd.name startswith /etc and
+    not proc.name in (cat, less, more, tail, head, grep)
+  output: >
+    Unauthorized file access detected
+    (user=%user.name file=%fd.name command=%proc.cmdline
+     container=%container.name)
+  priority: WARNING
+  tags: [filesystem, container]
+
+- rule: Container Privilege Escalation
+  desc: Detect privilege escalation attempts in containers
+  condition: >
+    spawned_process and container and
+    proc.name in (sudo, su, passwd, chsh, chfn) and
+    not user.name=root
+  output: >
+    Privilege escalation attempt detected
+    (user=%user.name command=%proc.cmdline container=%container.name
+     image=%container.image.repository)
+  priority: CRITICAL
+  tags: [privilege_escalation, container]
+
+- rule: Suspicious Process in DevSecOps Namespace
+  desc: Detect suspicious processes in DevSecOps namespace
+  condition: >
+    spawned_process and k8s_ns=devsecops-demo and
+    proc.name in (sh, bash, zsh, csh, ksh, tcsh, dash)
+  output: >
+    Suspicious shell process in DevSecOps namespace
+    (user=%user.name command=%proc.cmdline pod=%k8s.pod.name
+     namespace=%k8s.ns.name)
+  priority: WARNING
+  tags: [shell, kubernetes]
+EOF
+Configure Falco for Kubernetes:
+sudo cat > /etc/falco/falco.yaml << 'EOF'
+rules_file:
+  - /etc/falco/falco_rules.yaml
