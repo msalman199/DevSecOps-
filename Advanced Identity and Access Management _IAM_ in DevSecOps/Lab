@@ -1,0 +1,497 @@
+Advanced Identity and Access Management (IAM) in DevSecOps
+Learning Objectives
+By the end of this lab, students will be able to:
+
+• Understand the fundamentals of Identity and Access Management (IAM) in cloud environments • Identify and exploit privilege escalation vulnerabilities in AWS IAM trust policies • Implement Policy-as-Code using Open Policy Agent (OPA) for Kubernetes security • Configure least-privilege ServiceAccount bindings in Kubernetes • Apply security best practices for IAM in DevSecOps pipelines • Recognize common IAM misconfigurations and their security implications
+
+Prerequisites
+Before starting this lab, students should have:
+
+• Basic understanding of cloud computing concepts • Familiarity with Linux command line operations • Basic knowledge of AWS services and concepts • Understanding of Kubernetes fundamentals • Basic knowledge of YAML file structure • Familiarity with JSON format
+
+Lab Environment Setup
+Ready-to-Use Cloud Machines: Al Nafi provides pre-configured Linux-based cloud machines for this lab. Simply click Start Lab to access your environment. No need to build or configure your own virtual machine.
+
+Your lab environment includes: • Ubuntu 20.04 LTS with necessary tools pre-installed • AWS CLI configured with appropriate permissions • kubectl command-line tool • Open Policy Agent (OPA) installed • Sample Kubernetes cluster access
+
+Task 1: AWS IAM Privilege Escalation
+Overview
+In this task, you will learn how to identify and exploit overly permissive trust policies in AWS IAM. This exercise demonstrates common security vulnerabilities that can lead to privilege escalation attacks.
+
+Subtask 1.1: Understanding IAM Trust Policies
+Step 1: Connect to your lab environment and verify AWS CLI installation
+
+aws --version
+aws sts get-caller-identity
+Step 2: Create a basic IAM role with a trust policy
+
+First, create a trust policy document:
+
+cat > trust-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    }
+  ]
+}
+EOF
+Step 3: Create an IAM role using the trust policy
+
+aws iam create-role \
+    --role-name VulnerableRole \
+    --assume-role-policy-document file://trust-policy.json \
+    --description "Demonstration role with overly permissive trust policy"
+Subtask 1.2: Attaching Permissions to the Role
+Step 4: Create a permissions policy for the role
+
+cat > permissions-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketLocation",
+        "ec2:DescribeInstances"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+Step 5: Create and attach the policy to the role
+
+aws iam create-policy \
+    --policy-name VulnerableRolePolicy \
+    --policy-document file://permissions-policy.json \
+    --description "Policy for vulnerable role demonstration"
+
+# Get the policy ARN
+POLICY_ARN=$(aws iam list-policies --query 'Policies[?PolicyName==`VulnerableRolePolicy`].Arn' --output text)
+
+# Attach the policy to the role
+aws iam attach-role-policy \
+    --role-name VulnerableRole \
+    --policy-arn $POLICY_ARN
+Subtask 1.3: Exploiting the Privilege Escalation
+Step 6: Get the role ARN for assumption
+
+ROLE_ARN=$(aws iam get-role --role-name VulnerableRole --query 'Role.Arn' --output text)
+echo "Role ARN: $ROLE_ARN"
+Step 7: Attempt to assume the role using STS
+
+aws sts assume-role \
+    --role-arn $ROLE_ARN \
+    --role-session-name "PrivilegeEscalationDemo" \
+    --region us-east-1
+Step 8: Extract and use temporary credentials
+
+# Store the assume-role output
+ASSUME_ROLE_OUTPUT=$(aws sts assume-role \
+    --role-arn $ROLE_ARN \
+    --role-session-name "PrivilegeEscalationDemo" \
+    --region us-east-1)
+
+# Extract credentials
+export AWS_ACCESS_KEY_ID=$(echo $ASSUME_ROLE_OUTPUT | jq -r '.Credentials.AccessKeyId')
+export AWS_SECRET_ACCESS_KEY=$(echo $ASSUME_ROLE_OUTPUT | jq -r '.Credentials.SecretAccessKey')
+export AWS_SESSION_TOKEN=$(echo $ASSUME_ROLE_OUTPUT | jq -r '.Credentials.SessionToken')
+
+# Verify the new identity
+aws sts get-caller-identity
+Step 9: Test the escalated privileges
+
+# List S3 buckets with the assumed role
+aws s3 ls
+
+# List EC2 instances
+aws ec2 describe-instances --query 'Reservations[].Instances[].{ID:InstanceId,State:State.Name}' --output table
+Subtask 1.4: Implementing Secure Trust Policies
+Step 10: Create a secure trust policy
+
+cat > secure-trust-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::ACCOUNT-ID:user/specific-user"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        },
+        "IpAddress": {
+          "aws:SourceIp": "203.0.113.0/24"
+        },
+        "Bool": {
+          "aws:MultiFactorAuthPresent": "true"
+        }
+      }
+    }
+  ]
+}
+EOF
+Step 11: Update the role with the secure trust policy
+
+aws iam update-assume-role-policy \
+    --role-name VulnerableRole \
+    --policy-document file://secure-trust-policy.json
+Task 2: OPA Policy-as-Code for Kubernetes
+Overview
+In this task, you will implement Open Policy Agent (OPA) policies to enforce least-privilege ServiceAccount bindings in Kubernetes, demonstrating Policy-as-Code principles.
+
+Subtask 2.1: Setting Up OPA Gatekeeper
+Step 1: Verify Kubernetes cluster access
+
+kubectl cluster-info
+kubectl get nodes
+Step 2: Install OPA Gatekeeper
+
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.14/deploy/gatekeeper.yaml
+Step 3: Verify Gatekeeper installation
+
+kubectl get pods -n gatekeeper-system
+kubectl wait --for=condition=Ready pod -l control-plane=controller-manager -n gatekeeper-system --timeout=300s
+Subtask 2.2: Creating Constraint Templates
+Step 4: Create a constraint template for ServiceAccount restrictions
+
+cat > serviceaccount-constraint-template.yaml << 'EOF'
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredserviceaccount
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredServiceAccount
+      validation:
+        type: object
+        properties:
+          allowedServiceAccounts:
+            type: array
+            items:
+              type: string
+          exemptNamespaces:
+            type: array
+            items:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredserviceaccount
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          not exempt_namespace
+          service_account := input.review.object.spec.serviceAccountName
+          not allowed_service_account(service_account)
+          msg := sprintf("Pod uses disallowed ServiceAccount '%v'. Allowed ServiceAccounts: %v", [service_account, input.parameters.allowedServiceAccounts])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          not exempt_namespace
+          not input.review.object.spec.serviceAccountName
+          msg := "Pod must specify a ServiceAccount"
+        }
+
+        exempt_namespace {
+          input.review.object.metadata.namespace == input.parameters.exemptNamespaces[_]
+        }
+
+        allowed_service_account(sa) {
+          sa == input.parameters.allowedServiceAccounts[_]
+        }
+EOF
+
+kubectl apply -f serviceaccount-constraint-template.yaml
+Step 5: Verify the constraint template
+
+kubectl get constrainttemplates
+kubectl describe constrainttemplate k8srequiredserviceaccount
+Subtask 2.3: Creating and Applying Constraints
+Step 6: Create a constraint using the template
+
+cat > serviceaccount-constraint.yaml << 'EOF'
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccount
+metadata:
+  name: must-use-approved-sa
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces: ["kube-system", "gatekeeper-system"]
+  parameters:
+    allowedServiceAccounts:
+      - "default"
+      - "app-service-account"
+      - "monitoring-sa"
+    exemptNamespaces:
+      - "kube-system"
+      - "gatekeeper-system"
+EOF
+
+kubectl apply -f serviceaccount-constraint.yaml
+Step 7: Verify the constraint is active
+
+kubectl get k8srequiredserviceaccount
+kubectl describe k8srequiredserviceaccount must-use-approved-sa
+Subtask 2.4: Testing the OPA Policy
+Step 8: Create a test namespace
+
+kubectl create namespace policy-test
+Step 9: Create ServiceAccounts for testing
+
+# Create an approved ServiceAccount
+kubectl create serviceaccount app-service-account -n policy-test
+
+# Create an unapproved ServiceAccount
+kubectl create serviceaccount unauthorized-sa -n policy-test
+Step 10: Test with an approved ServiceAccount
+
+cat > approved-pod.yaml << 'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: approved-pod
+  namespace: policy-test
+spec:
+  serviceAccountName: app-service-account
+  containers:
+  - name: nginx
+    image: nginx:1.20
+    ports:
+    - containerPort: 80
+EOF
+
+kubectl apply -f approved-pod.yaml
+Step 11: Test with an unapproved ServiceAccount
+
+cat > unapproved-pod.yaml << 'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unapproved-pod
+  namespace: policy-test
+spec:
+  serviceAccountName: unauthorized-sa
+  containers:
+  - name: nginx
+    image: nginx:1.20
+    ports:
+    - containerPort: 80
+EOF
+
+kubectl apply -f unapproved-pod.yaml
+Step 12: Test without specifying a ServiceAccount
+
+cat > no-sa-pod.yaml << 'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-sa-pod
+  namespace: policy-test
+spec:
+  containers:
+  - name: nginx
+    image: nginx:1.20
+    ports:
+    - containerPort: 80
+EOF
+
+kubectl apply -f no-sa-pod.yaml
+Subtask 2.5: Implementing RBAC with Least Privilege
+Step 13: Create a least-privilege Role
+
+cat > least-privilege-role.yaml << 'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: policy-test
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+  resourceNames: ["app-config"]
+EOF
+
+kubectl apply -f least-privilege-role.yaml
+Step 14: Create a RoleBinding
+
+cat > least-privilege-rolebinding.yaml << 'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-reader-binding
+  namespace: policy-test
+subjects:
+- kind: ServiceAccount
+  name: app-service-account
+  namespace: policy-test
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+EOF
+
+kubectl apply -f least-privilege-rolebinding.yaml
+Step 15: Test the RBAC configuration
+
+# Test permissions with the ServiceAccount
+kubectl auth can-i get pods --as=system:serviceaccount:policy-test:app-service-account -n policy-test
+kubectl auth can-i create pods --as=system:serviceaccount:policy-test:app-service-account -n policy-test
+kubectl auth can-i delete pods --as=system:serviceaccount:policy-test:app-service-account -n policy-test
+Subtask 2.6: Advanced OPA Policy for Resource Limits
+Step 16: Create a resource limits constraint template
+
+cat > resource-limits-template.yaml << 'EOF'
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredresources
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredResources
+      validation:
+        type: object
+        properties:
+          limits:
+            type: object
+            properties:
+              cpu:
+                type: string
+              memory:
+                type: string
+          requests:
+            type: object
+            properties:
+              cpu:
+                type: string
+              memory:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredresources
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits
+          msg := sprintf("Container '%v' must specify resource limits", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          container := input.review.object.spec.containers[_]
+          not container.resources.requests
+          msg := sprintf("Container '%v' must specify resource requests", [container.name])
+        }
+EOF
+
+kubectl apply -f resource-limits-template.yaml
+Step 17: Create and apply the resource limits constraint
+
+cat > resource-limits-constraint.yaml << 'EOF'
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredResources
+metadata:
+  name: must-have-resources
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces: ["kube-system", "gatekeeper-system"]
+  parameters:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+EOF
+
+kubectl apply -f resource-limits-constraint.yaml
+Troubleshooting Tips
+Common Issues and Solutions
+Issue 1: AWS CLI authentication errors
+
+Solution: Verify your AWS credentials are properly configured
+Command: aws configure list
+Issue 2: Kubernetes cluster connection issues
+
+Solution: Check your kubeconfig file and cluster status
+Command: kubectl config current-context
+Issue 3: OPA Gatekeeper pods not starting
+
+Solution: Check cluster resources and node capacity
+Command: kubectl describe pods -n gatekeeper-system
+Issue 4: Constraint violations not working
+
+Solution: Verify constraint template syntax and wait for propagation
+Command: kubectl get constrainttemplates -o yaml
+Issue 5: RBAC permission denied errors
+
+Solution: Check ServiceAccount permissions and RoleBindings
+Command: kubectl describe rolebinding -n policy-test
+Lab Cleanup
+Step 1: Clean up Kubernetes resources
+
+kubectl delete namespace policy-test
+kubectl delete constrainttemplates k8srequiredserviceaccount k8srequiredresources
+kubectl delete -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.14/deploy/gatekeeper.yaml
+Step 2: Clean up AWS resources
+
+# Unset temporary credentials
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+# Detach and delete policy
+aws iam detach-role-policy --role-name VulnerableRole --policy-arn $POLICY_ARN
+aws iam delete-policy --policy-arn $POLICY_ARN
+
+# Delete role
+aws iam delete-role --role-name VulnerableRole
+
+# Remove local files
+rm -f trust-policy.json permissions-policy.json secure-trust-policy.json
+rm -f *.yaml
+Conclusion
+In this comprehensive lab, you have successfully:
+
+• Identified and exploited AWS IAM privilege escalation vulnerabilities through overly permissive trust policies • Implemented secure IAM practices by creating restrictive trust policies with proper conditions • Deployed Open Policy Agent (OPA) Gatekeeper to enforce Policy-as-Code in Kubernetes • Created and tested constraint templates to enforce least-privilege ServiceAccount bindings • Implemented RBAC configurations following the principle of least privilege • Developed advanced OPA policies for resource management and security enforcement
+
+Key Takeaways
+Security Best Practices: Always follow the principle of least privilege when configuring IAM roles and Kubernetes ServiceAccounts. Overly permissive policies can lead to serious security vulnerabilities.
+
+Policy-as-Code Benefits: Using OPA and Gatekeeper allows you to codify security policies, making them version-controlled, testable, and consistently enforceable across your Kubernetes clusters.
+
+DevSecOps Integration: These IAM and policy management techniques are essential components of a mature DevSecOps pipeline, helping to shift security left and automate compliance checks.
+
+Continuous Monitoring: Regular auditing of IAM policies and Kubernetes RBAC configurations is crucial for maintaining a secure environment as your infrastructure evolves.
+
+This lab provides a foundation for implementing advanced identity and access management practices in modern cloud-native environments, preparing you for real-world DevSecOps challenges.
